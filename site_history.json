@@ -1,0 +1,28 @@
+{
+    "LCAIE10480": {
+        "site_name": "LCAIE10480",
+        "option_name": "A-GD",
+        "coords": "30.057946,31.314371",
+        "length": "180",
+        "width": "60.0",
+        "sectorization": false,
+        "sectors": [
+            {
+                "azimuth": "0",
+                "color": "white"
+            },
+            {
+                "azimuth": "100",
+                "color": "white"
+            },
+            {
+                "azimuth": "270",
+                "color": "white"
+            },
+            {
+                "azimuth": "",
+                "color": "white"
+            }
+        ]
+    }
+}
