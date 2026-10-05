@@ -4,17 +4,12 @@ import json
 import os
 import csv
 import simplekml
-import base64
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
                              QLabel, QLineEdit, QPushButton, QCheckBox, QGridLayout, 
                              QListWidget, QMessageBox, QFrame, QFileDialog)
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPixmap
 
 HISTORY_FILE = "site_history.json"
-
-# Google Earth icon embedded directly (no external file needed)
-LOGO_B64 = "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"
 
 class SiteLayerCreator(QWidget):
     def __init__(self):
@@ -22,9 +17,9 @@ class SiteLayerCreator(QWidget):
         self.setWindowTitle("one site design layer")
         self.setGeometry(100, 100, 1150, 750)
         self.setStyleSheet(self.get_stylesheet())
-
+        
         self.history_data = self.load_history()
-
+        
         self.init_ui()
         self.populate_history_list()
 
@@ -37,7 +32,7 @@ class SiteLayerCreator(QWidget):
         # 1. Left Panel: History List
         # ==========================================
         left_panel = QVBoxLayout()
-
+        
         lbl_history = QLabel("History")
         lbl_history.setStyleSheet("font-size: 16px; font-weight: bold; color: #77aa77;")
         left_panel.addWidget(lbl_history)
@@ -46,56 +41,20 @@ class SiteLayerCreator(QWidget):
         self.list_history.itemClicked.connect(self.load_from_history)
         left_panel.addWidget(self.list_history)
 
-        # --- History buttons row: Remove one + Clear all ---
-        history_btns_layout = QHBoxLayout()
-
-        btn_remove_history = QPushButton("Remove Selected")
-        btn_remove_history.setObjectName("RemoveBtn")
-        btn_remove_history.clicked.connect(self.remove_selected_history)
-        history_btns_layout.addWidget(btn_remove_history, 1)
-
         btn_delete_history = QPushButton("Clear All History")
         btn_delete_history.setObjectName("DeleteBtn")
         btn_delete_history.clicked.connect(self.clear_history)
-        history_btns_layout.addWidget(btn_delete_history, 1)
-
-        left_panel.addLayout(history_btns_layout)
+        left_panel.addWidget(btn_delete_history)
 
         # ==========================================
         # 2. Right Panel: Input Form
         # ==========================================
         right_panel = QVBoxLayout()
 
-        # --- Header: Logo + Big Title ---
-        header_layout = QHBoxLayout()
-        header_layout.setSpacing(25)
-        header_layout.setContentsMargins(30, 20, 0, 30)
-
-        self.logo_lbl = QLabel()
-        logo_bytes = base64.b64decode(LOGO_B64)
-        pixmap = QPixmap()
-        pixmap.loadFromData(logo_bytes)
-        pixmap = pixmap.scaled(
-            160, 160,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation
-        )
-        self.logo_lbl.setPixmap(pixmap)
-        header_layout.addWidget(self.logo_lbl)
-
-        title = QLabel()
-        title.setTextFormat(Qt.TextFormat.RichText)
-        title.setText(
-            "<div style='font-size:36px; font-weight:bold; line-height:1.15;'>"
-            "<span style='color:#a9d3a5;'>GOOGLE EARTH</span><br>"
-            "<span style='color:#ffffff;'>LAYER CREATOR</span>"
-            "</div>"
-        )
-        title.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-        header_layout.addWidget(title)
-        header_layout.addStretch(1)
-
-        right_panel.addLayout(header_layout)
+        title = QLabel("one site design layer")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setObjectName("Title")
+        right_panel.addWidget(title)
 
         form_layout = QGridLayout()
         form_layout.setSpacing(15)
@@ -108,7 +67,7 @@ class SiteLayerCreator(QWidget):
         lbl_name = QLabel("Site Name / Option")
         self.input_name = QLineEdit()
         self.input_name.setPlaceholderText("Site Name")
-
+        
         self.input_option = QLineEdit()
         self.input_option.setPlaceholderText("Option")
         self.input_option.setFixedWidth(150)
@@ -121,19 +80,19 @@ class SiteLayerCreator(QWidget):
         lbl_coords = QLabel("Latitude, Longitude")
         self.input_coords = QLineEdit()
         self.input_coords.setPlaceholderText("Lat, Long")
-
+        
         form_layout.addWidget(lbl_coords, 1, 0)
         form_layout.addWidget(self.input_coords, 1, 1, 1, 4)
 
         # --- Row 3: Line Length & Sector Width ---
         lbl_length = QLabel("Line Length (m)")
         self.input_length = QLineEdit()
-
+        
         self.lbl_width = QLabel("Sector Width °")
         self.input_width = QLineEdit()
         self.input_width.setPlaceholderText("60") 
         self.input_width.setText("60")            
-
+        
         form_layout.addWidget(lbl_length, 2, 0)
         form_layout.addWidget(self.input_length, 2, 1)
         form_layout.addWidget(self.lbl_width, 2, 3)
@@ -153,12 +112,24 @@ class SiteLayerCreator(QWidget):
         # --- Row 5: Azimuth ---
         lbl_azimuth = QLabel("Azimuth °")
         form_layout.addWidget(lbl_azimuth, 5, 0)
-
+        
         self.az_inputs = []
         for i in range(4):
             inp = QLineEdit()
             self.az_inputs.append(inp)
             form_layout.addWidget(inp, 5, i + 1)
+
+        # --- Row 6: Color ---
+        lbl_color = QLabel("Color (Outline)")
+        form_layout.addWidget(lbl_color, 6, 0)
+        
+        self.color_inputs = []
+        for i in range(4):
+            inp = QLineEdit()
+            inp.setText("white") 
+            inp.setStyleSheet("background-color: white; color: black;") 
+            self.color_inputs.append(inp)
+            form_layout.addWidget(inp, 6, i + 1)
 
         right_panel.addLayout(form_layout)
 
@@ -171,47 +142,45 @@ class SiteLayerCreator(QWidget):
         # ==========================================
         # 3. Control Buttons Layout
         # ==========================================
-
+        
         btn_layout_row1 = QHBoxLayout()
-
+        
         self.btn_save = QPushButton("Save")
         self.btn_save.setObjectName("SaveBtn")
         self.btn_save.clicked.connect(self.save_to_history)
-
+        
+        self.btn_template = QPushButton("Export Template (CSV)")
+        self.btn_template.setObjectName("TemplateBtn")
+        self.btn_template.clicked.connect(self.export_template)
+        
         btn_layout_row1.addWidget(self.btn_save, 1)
-
+        btn_layout_row1.addWidget(self.btn_template, 1)
+        
         right_panel.addLayout(btn_layout_row1)
 
         btn_layout_row2 = QHBoxLayout()
-
+        
         self.btn_import = QPushButton("Import from Item (CSV)")
         self.btn_import.setObjectName("ImportBtn")
         self.btn_import.clicked.connect(self.import_multi_sites)
-
-        # Small Export button, located beside Import button
-        self.btn_template = QPushButton("Export")
-        self.btn_template.setObjectName("TemplateBtnSmall")
-        self.btn_template.setFixedWidth(110)
-        self.btn_template.clicked.connect(self.export_template)
-
+        
         self.btn_create = QPushButton("Create and Open Layer")
         self.btn_create.setObjectName("CreateBtn")
         self.btn_create.clicked.connect(self.create_kml)
-
+        
         btn_layout_row2.addWidget(self.btn_import, 1)
-        btn_layout_row2.addWidget(self.btn_template)
         btn_layout_row2.addWidget(self.btn_create, 1)
-
+        
         right_panel.addLayout(btn_layout_row2)
 
         main_h_layout.addLayout(left_panel, 1)
-
+        
         line = QFrame()
         line.setFrameShape(QFrame.Shape.VLine)
         line.setFrameShadow(QFrame.Shadow.Sunken)
         line.setStyleSheet("color: #555;")
         main_h_layout.addWidget(line)
-
+        
         main_h_layout.addLayout(right_panel, 4)
 
         self.setLayout(main_h_layout)
@@ -233,6 +202,11 @@ class SiteLayerCreator(QWidget):
                 color: #ffffff;
                 font-family: Arial, sans-serif;
                 font-size: 14px;
+            }
+            QLabel#Title {
+                font-size: 18px;
+                font-weight: bold;
+                margin-bottom: 10px;
             }
             QLineEdit {
                 background-color: #3c3f41;
@@ -288,17 +262,17 @@ class SiteLayerCreator(QWidget):
             QPushButton#SaveBtn:hover {
                 background-color: #0078d4;
             }
-            QPushButton#TemplateBtnSmall {
+            QPushButton#TemplateBtn {
                 background-color: #6a0dad;
                 color: white;
                 font-weight: bold;
                 border: none;
                 border-radius: 4px;
-                padding: 8px;
-                font-size: 12px;
-                margin-top: 5px;
+                padding: 12px;
+                font-size: 14px;
+                margin-top: 10px;
             }
-            QPushButton#TemplateBtnSmall:hover {
+            QPushButton#TemplateBtn:hover {
                 background-color: #8000ff;
             }
             QPushButton#ImportBtn {
@@ -324,17 +298,6 @@ class SiteLayerCreator(QWidget):
             }
             QPushButton#DeleteBtn:hover {
                 background-color: #a00000;
-            }
-            QPushButton#RemoveBtn {
-                background-color: #9e6a00;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px;
-                margin-top: 5px;
-            }
-            QPushButton#RemoveBtn:hover {
-                background-color: #c08000;
             }
             QCheckBox {
                 spacing: 10px;
@@ -378,7 +341,7 @@ class SiteLayerCreator(QWidget):
             return
 
         data = self.history_data[site_name]
-
+        
         self.input_name.setText(data.get("site_name", ""))
         self.input_option.setText(data.get("option_name", ""))
         self.input_coords.setText(data.get("coords", ""))
@@ -390,25 +353,13 @@ class SiteLayerCreator(QWidget):
         for i in range(4):
             if i < len(sectors):
                 self.az_inputs[i].setText(sectors[i].get("azimuth", ""))
+                color_val = sectors[i].get("color", "white")
+                self.color_inputs[i].setText(color_val)
+                self.color_inputs[i].setStyleSheet(f"background-color: {color_val}; color: black;")
             else:
                 self.az_inputs[i].clear()
-
-    def remove_selected_history(self):
-        current_item = self.list_history.currentItem()
-        if not current_item:
-            QMessageBox.warning(self, "No Selection", "Please select a history item to remove.")
-            return
-
-        site_name = current_item.text()
-        reply = QMessageBox.question(self, 'Confirm', 
-                                     f"Are you sure you want to remove '{site_name}' from history?", 
-                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if reply == QMessageBox.StandardButton.Yes:
-            if site_name in self.history_data:
-                del self.history_data[site_name]
-                self.save_history()
-                self.populate_history_list()
-                QMessageBox.information(self, "Success", f"'{site_name}' removed from history.")
+                self.color_inputs[i].setText("white")
+                self.color_inputs[i].setStyleSheet("background-color: white; color: black;")
 
     def clear_history(self):
         reply = QMessageBox.question(self, 'Confirm', 'Are you sure you want to clear all history?', 
@@ -424,10 +375,10 @@ class SiteLayerCreator(QWidget):
             site_name = self.input_name.text() or "Site"
             option_name = self.input_option.text()
             coord_text = self.input_coords.text()
-
+            
             if not coord_text:
                 raise ValueError("Coordinates are empty. Please enter Lat, Long.")
-
+            
             try:
                 lat_str, lon_str = coord_text.split(',')
                 float(lat_str.strip())
@@ -438,7 +389,8 @@ class SiteLayerCreator(QWidget):
             sectors_data = []
             for i in range(4):
                 sectors_data.append({
-                    "azimuth": self.az_inputs[i].text()
+                    "azimuth": self.az_inputs[i].text(),
+                    "color": self.color_inputs[i].text() or "white"
                 })
 
             self.history_data[site_name] = {
@@ -450,13 +402,13 @@ class SiteLayerCreator(QWidget):
                 "sectorization": self.chk_sectorization.isChecked(),
                 "sectors": sectors_data
             }
-
+            
             self.save_history()
             self.populate_history_list()
-
+            
             if show_message:
                 QMessageBox.information(self, "Saved", f"Site '{site_name}' saved to history successfully.")
-
+                
         except Exception as e:
             QMessageBox.critical(self, "Save Error", str(e))
 
@@ -465,14 +417,18 @@ class SiteLayerCreator(QWidget):
         file_path, _ = QFileDialog.getSaveFileName(self, "Save CSV Template", "site_template.csv", "CSV Files (*.csv)")
         if not file_path:
             return
-
+            
         try:
             with open(file_path, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
-                # Empty template: header row only
+                # Exact columns requested by user
                 writer.writerow(["site name", "option", "lat", "long", "az-a", "az-b", "az-c", "az-d", "line length"])
-
-            QMessageBox.information(self, "Success", "Empty template exported successfully!")
+                
+                # Example rows demonstrating the "-" and " " neglect feature
+                writer.writerow(["Site_Alpha", "A", "30.0444", "31.2357", "0", "90", "-", " ", "1000"])
+                writer.writerow(["Site_Beta", "B", "30.0555", "31.2444", "45", "135", "225", "315", "1500"])
+                
+            QMessageBox.information(self, "Success", "Template exported successfully!\n\nNote: Cells containing '-' or ' ' (space) will be ignored during import.")
         except Exception as e:
             QMessageBox.critical(self, "Export Error", str(e))
 
@@ -485,7 +441,7 @@ class SiteLayerCreator(QWidget):
 
         lat2 = math.asin(math.sin(lat1) * math.cos(distance/R) + 
                          math.cos(lat1) * math.sin(distance/R) * math.cos(bearing))
-
+        
         lon2 = lon1 + math.atan2(math.sin(bearing) * math.sin(distance/R) * math.cos(lat1),
                                  math.cos(distance/R) - math.sin(lat1) * math.sin(lat2))
 
@@ -499,13 +455,11 @@ class SiteLayerCreator(QWidget):
         }
         return color_map.get(color_name.lower(), "ffffffff")
 
-    def generate_site_kml(self, fol, site_name, option_name, lat, lon, height, length, azims, is_sectorization, sector_width):
-        # Default outline color is white
-        kml_outline_color = self.get_kml_color("white")
-
+    def generate_site_kml(self, fol, site_name, option_name, lat, lon, height, length, azims, colors, is_sectorization, sector_width):
         for i in range(4):
             az_text = str(azims[i]).strip() if i < len(azims) and azims[i] is not None else ""
-
+            color_text = str(colors[i]).strip() if i < len(colors) and colors[i] is not None else "white"
+            
             # Neglect if azimuth is empty, "-", or " "
             if not az_text or az_text == "-" or az_text == " ":
                 continue
@@ -515,29 +469,32 @@ class SiteLayerCreator(QWidget):
             except:
                 continue
 
+            kml_outline_color = self.get_kml_color(color_text)
+            
             if is_sectorization:
                 pol = fol.newpolygon(name=f"S{i+1} Az:{azimuth}")
                 start_bearing = azimuth - (sector_width / 2)
                 end_bearing = azimuth + (sector_width / 2)
-
+                
                 arc_coords = []
                 steps = int(sector_width / 5) + 1 
                 bearing_step = sector_width / (steps - 1) if steps > 1 else 0
-
+                
                 for step in range(steps):
                     current_bearing = start_bearing + (step * bearing_step)
                     dest_lat, dest_lon = self.calculate_destination(lat, lon, current_bearing, length)
                     arc_coords.append((dest_lon, dest_lat, height))
-
+                
                 pol.outerboundaryis = [(lon, lat, height)] + arc_coords + [(lon, lat, height)]
-
-                # Sector color #ffffff and opacity 30%
+                
+                # USER REQUEST: Sector color #ffffff and opacity 30%
                 # KML color format: aabbggrr. White = ffffff. 30% opacity = 4D.
+                # So the fill color is "4Dffffff"
                 pol.style.polystyle.color = "4Dffffff"
                 pol.style.polystyle.fill = 1
                 pol.style.polystyle.outline = 1
-
-                # Outline uses the default white color
+                
+                # Outline uses the color from the color input
                 pol.style.linestyle.color = kml_outline_color
                 pol.style.linestyle.width = 3
             else:
@@ -549,7 +506,7 @@ class SiteLayerCreator(QWidget):
 
         pnt = fol.newpoint(name=f"{site_name} - {option_name}")
         pnt.coords = [(lon, lat, height)]
-
+        
         pnt.style.iconstyle.scale = 1.0 
         pnt.style.labelstyle.scale = 1.0
         pnt.style.labelstyle.color = simplekml.Color.white
@@ -557,10 +514,10 @@ class SiteLayerCreator(QWidget):
     def create_kml(self):
         try:
             self.save_to_history(show_message=False)
-
+            
             site_name = self.input_name.text() or "Site"
             option_name = self.input_option.text()
-
+            
             lat_str, lon_str = self.input_coords.text().split(',')
             lat = float(lat_str.strip())
             lon = float(lon_str.strip())
@@ -573,12 +530,13 @@ class SiteLayerCreator(QWidget):
             fol = kml.newfolder(name=f"{site_name} {option_name}")
 
             azims = [inp.text() for inp in self.az_inputs]
+            colors = [inp.text() or "white" for inp in self.color_inputs]
 
-            self.generate_site_kml(fol, site_name, option_name, lat, lon, 0.0, length, azims, is_sectorization, sector_width)
+            self.generate_site_kml(fol, site_name, option_name, lat, lon, 0.0, length, azims, colors, is_sectorization, sector_width)
 
             output_filename = f"{site_name}_design.kml"
             kml.save(output_filename)
-
+            
             if sys.platform == 'win32':
                 os.startfile(output_filename)
             elif sys.platform == 'darwin':
@@ -601,7 +559,7 @@ class SiteLayerCreator(QWidget):
             kml = simplekml.Kml()
             is_sectorization = self.chk_sectorization.isChecked()
             sector_width = float(self.input_width.text()) if self.input_width.text() else 60.0
-
+            
             def clean_cell(value):
                 if value is None:
                     return ""
@@ -612,10 +570,10 @@ class SiteLayerCreator(QWidget):
 
             with open(file_path, 'r', encoding='utf-8-sig') as f: 
                 reader = csv.DictReader(f)
-
+                
                 reader.fieldnames = [name.strip().lower().replace(" ", "") for name in reader.fieldnames]
-
-                # Required columns (height removed as per user request)
+                
+                # Updated required columns (height removed as per user request)
                 required_cols = ['sitename', 'option', 'lat', 'long', 'az-a', 'az-b', 'az-c', 'az-d', 'linelength']
                 for col in required_cols:
                     if col not in reader.fieldnames:
@@ -627,30 +585,32 @@ class SiteLayerCreator(QWidget):
                 for row in reader:
                     site_name = clean_cell(row.get('sitename', row.get('sitename/option', 'Unnamed')))
                     option = clean_cell(row.get('option', ''))
-
+                    
                     lat_str = clean_cell(row.get('lat', '0'))
                     lon_str = clean_cell(row.get('long', '0'))
                     length_str = clean_cell(row.get('linelength', '0'))
-
+                    
                     # If critical values are empty, skip the row
                     if not lat_str or not lon_str or not length_str:
                         continue
-
+                        
                     lat = float(lat_str)
                     lon = float(lon_str)
                     length = float(length_str)
                     height = 0.0  # Default height since it's not in the import list
-
+                    
                     azims = [
                         clean_cell(row.get('az-a')), 
                         clean_cell(row.get('az-b')), 
                         clean_cell(row.get('az-c')), 
                         clean_cell(row.get('az-d'))
                     ]
-
+                    
+                    colors = ["white", "white", "white", "white"]
+                    
                     fol = kml.newfolder(name=f"{site_name} {option}")
-
-                    self.generate_site_kml(fol, site_name, option, lat, lon, height, length, azims, is_sectorization, sector_width)
+                    
+                    self.generate_site_kml(fol, site_name, option, lat, lon, height, length, azims, colors, is_sectorization, sector_width)
                     count += 1
 
             if count == 0:
@@ -658,7 +618,7 @@ class SiteLayerCreator(QWidget):
 
             output_filename = "imported_multi_sites.kml"
             kml.save(output_filename)
-
+            
             if sys.platform == 'win32':
                 os.startfile(output_filename)
             elif sys.platform == 'darwin':
