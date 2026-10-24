@@ -13,23 +13,26 @@ from datetime import datetime
 from xml.sax.saxutils import escape
 
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-    QGridLayout, QLabel, QLineEdit, QPushButton, QListWidget, 
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QGridLayout, QLabel, QLineEdit, QPushButton, QListWidget,
     QFileDialog, QMessageBox, QFrame, QComboBox, QRadioButton,
-    QButtonGroup, QStackedWidget, QDialog, QScrollArea
+    QButtonGroup, QStackedWidget, QDialog, QScrollArea, QCheckBox,
+    QColorDialog, QSpinBox, QTabWidget, QGroupBox
 )
-from PyQt6.QtGui import QPixmap, QAction
+from PyQt6.QtGui import QPixmap, QAction, QColor
 from PyQt6.QtCore import Qt, QUrl
 import simplekml
 
 # Optional embedded browser engine for the 2D Map Popup
 try:
     from PyQt6.QtWebEngineWidgets import QWebEngineView
+    from PyQt6.QtWebEngineCore import QWebEngineSettings
     HAS_WEBENGINE = True
 except ImportError:
     HAS_WEBENGINE = False
 
 HISTORY_FILE = "site_history.json"
+BAND_SETTINGS_FILE = "band_sector_settings.json"
 
 LOGO_B64 = (
     "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAACXBIWXMAAAsTAAALEwEAmpwYAAAIcElEQVR"
@@ -42,7 +45,7 @@ LOGO_B64 = (
     "MavAAvkXyOwDu1wYL+3qGj57OMjNbrucAuMPM7tJJ6X5NGfper3dNk/mU0pKc8xjwYr4N3t0L+K1m9iCAh3"
     "QqYt7dxf7SBvu3A2ie4vwpOYmRkZHLpRa9Xs9SSvVXt9u9SgqTUrpFjJWyGQD8wyQf0c/B+DKxr9IJ9leSX"
     "AVgtcgg+dn/WtsBfKyqqivdfTqAqqoqaENFNrvd7rVVVS3QC0vNN8GTrMEDqMG7+26Sj+pfM1upjYj9KJ3"
-    "C/hqSXwOwQRJ9rvgv6vV6UpwrZD4kR8R+zpkAuimlq9z94wCuSSl9UlovIIOAB/C4me0HsC+A3unuhf2vB"
+    "C/hqSXwOwQRJ9rvgv6vV6UpwrZD4kR8R+zpkAuimlq9z944CuSSl9UlovIIOAB/C4me0HsC+A3unuhf2vB"
     "vvrANyr78/JK+SWZjZU2BcT0n6SubCviy3TcvdPFdOSumgTpWwEPuc8BjzJ/SR/4O5PAfiRTi3YX91kv6F"
     "i884W/8Xu/tHCvkpH7EdEqNmX44p9Oa6kD8CsOIUbpCICQfJ7wfweM3s0pTQGvJkdBHDI3X9MckthX3dJ7"
     "JPcBOCbUZbvHRi9mb1P7Pd6vStVOmJfpVPYj9KZEaVTsy/X1aVrOK42cTvJnQIf5aKy+SEAgX9a4AE8S/I"
@@ -65,11 +68,173 @@ LOGO_B64 = (
     "YrpW8s6bZJkaP+0j0wS+r/gG8HuDfiA29ql7B3R8fVHnGXerI+rSJddqcbLoWDcyZvNNuExGNyjiyuVfkd"
     "KZgTYs+uF+bqLpfEzq+LbomyeGGVtqsHbdfm8g+sqlIos1P5ZD3YplaUzZV91ES9weDMrMy+3lCchhTBq"
     "lRO++cYR+jjluzH0FQvrB79uzZl3WmeE2LmWh9cWOYu1VpMyLFngC9PyYPz0Tvq+jwVLSRAiv3rT/no4D"
-    "lGVIpqv3R0J2qN/f"
+    "lGVIpqv3R0J2qN/8="
 )
 
+# Default Band, Sector & Border Customization Settings
+DEFAULT_BAND_SECTOR_SETTINGS = {
+    "border": {
+        "enabled": True,
+        "color": "#ffffff"
+    },
+    "bands": {
+        "Band 700": {
+            "enabled": True,
+            "length": 140.0,
+            "width": 60.0,
+            "transparency": 50,
+            "color": "#00e5ff"
+        },
+        "Band 1800": {
+            "enabled": True,
+            "length": 170.0,
+            "width": 60.0,
+            "transparency": 50,
+            "color": "#ffeb3b"
+        },
+        "Band 2600": {
+            "enabled": True,
+            "length": 100.0,
+            "width": 60.0,
+            "transparency": 50,
+            "color": "#ff5252"
+        },
+        "C-Band": {
+            "enabled": True,
+            "length": 300.0,
+            "width": 60.0,
+            "transparency": 50,
+            "color": "#000000"
+        }
+    },
+    "sectors": {
+        "S1": {
+            "use_custom": False,
+            "length": 120.0,
+            "width": 60.0,
+            "transparency": 50,
+            "color": "#00e5ff"
+        },
+        "S2": {
+            "use_custom": False,
+            "length": 120.0,
+            "width": 60.0,
+            "transparency": 50,
+            "color": "#ffeb3b"
+        },
+        "S3": {
+            "use_custom": False,
+            "length": 120.0,
+            "width": 60.0,
+            "transparency": 50,
+            "color": "#ff5252"
+        },
+        "S4": {
+            "use_custom": False,
+            "length": 120.0,
+            "width": 60.0,
+            "transparency": 50,
+            "color": "#69f0ae"
+        }
+    }
+}
 
-# --- Standalone Native XLSX Writer & Reader (Zero 3rd-party dependencies) ---
+# Simple Template Columns
+SIMPLE_TEMPLATE_COLS = ["site name", "lat", "long", "az-a", "az-b", "az-c", "az-d"]
+
+# Grouped & Clear Customized Template Attributes
+# Format: (Group Title, [ (column_key, display_label, default_checked, is_mandatory), ... ])
+GROUPED_CUSTOM_ATTRIBUTES = [
+    ("1. Mandatory & General Site Info", [
+        ("site name", "Site Name (Mandatory)", True, True),
+        ("lat", "Latitude (Mandatory)", True, True),
+        ("long", "Longitude (Mandatory)", True, True),
+        ("option", "Option Name", True, False),
+        ("band", "Band (700 / 1800 / 2600 / C-Band)", True, False),
+        ("site type", "Site Type (Macro / Micro / IBS / Rooftop / Greenfield)", True, False),
+        ("line length", "Sector / Line Length (m)", True, False),
+        ("sector width", "Sector Beamwidth (°)", True, False),
+        ("general comment", "General Comment (Site Level)", True, False),
+    ]),
+    ("2. Sector Azimuths (S1 - S4)", [
+        ("az-a", "Sector 1 Azimuth (az-a)", True, False),
+        ("az-b", "Sector 2 Azimuth (az-b)", True, False),
+        ("az-c", "Sector 3 Azimuth (az-c)", True, False),
+        ("az-d", "Sector 4 Azimuth (az-d)", True, False),
+    ]),
+    ("3. Antenna Height per Sector (S1 - S4)", [
+        ("antenna height s1", "Antenna Height S1 (m)", True, False),
+        ("antenna height s2", "Antenna Height S2 (m)", True, False),
+        ("antenna height s3", "Antenna Height S3 (m)", True, False),
+        ("antenna height s4", "Antenna Height S4 (m)", False, False),
+    ]),
+    ("4. RS Power per Sector (S1 - S4)", [
+        ("rs power s1", "RS Power S1 (dBm)", True, False),
+        ("rs power s2", "RS Power S2 (dBm)", True, False),
+        ("rs power s3", "RS Power S3 (dBm)", True, False),
+        ("rs power s4", "RS Power S4 (dBm)", False, False),
+    ]),
+    ("5. PCI & MOD (S1 - S4)", [
+        ("pci s1", "PCI S1", True, False),
+        ("pci s2", "PCI S2", True, False),
+        ("pci s3", "PCI S3", True, False),
+        ("pci s4", "PCI S4", False, False),
+        ("mod s1", "MOD S1 (MOD3 / MOD6 / MOD30)", True, False),
+        ("mod s2", "MOD S2 (MOD3 / MOD6 / MOD30)", True, False),
+        ("mod s3", "MOD S3 (MOD3 / MOD6 / MOD30)", True, False),
+        ("mod s4", "MOD S4 (MOD3 / MOD6 / MOD30)", False, False),
+    ]),
+    ("6. Sector Comments & Extra RF Parameters", [
+        ("comment s1", "Comment for Sector 1", False, False),
+        ("comment s2", "Comment for Sector 2", False, False),
+        ("comment s3", "Comment for Sector 3", False, False),
+        ("comment s4", "Comment for Sector 4", False, False),
+        ("mechanical tilt", "Mechanical Tilt (°)", False, False),
+        ("electrical tilt", "Electrical Tilt (°)", False, False),
+        ("technology", "Technology (2G / 3G / 4G / 5G)", False, False),
+        ("cell id", "Cell ID", False, False),
+    ])
+]
+
+
+def decode_base64_safely(b64_input):
+    """Safely cleans and pads a Base64 string to prevent binascii.Error."""
+    if not b64_input:
+        return b""
+    b64_str = "".join(b64_input.split()).rstrip("=")
+    if len(b64_str) % 4 == 1:
+        b64_str = b64_str[:-1]
+    missing_padding = len(b64_str) % 4
+    if missing_padding:
+        b64_str += "=" * (4 - missing_padding)
+    return base64.b64decode(b64_str)
+
+
+def hex_and_transparency_to_kml_color(hex_color, transparency_pct):
+    """
+    Converts standard #RRGGBB hex and transparency percentage (0=opaque, 100=invisible)
+    into KML's aabbggrr hex format.
+    """
+    hex_clean = hex_color.lstrip("#")
+    if len(hex_clean) != 6:
+        hex_clean = "ffffff"
+    r = hex_clean[0:2]
+    g = hex_clean[2:4]
+    b = hex_clean[4:6]
+    opacity_pct = max(0, min(100, 100 - int(transparency_pct)))
+    alpha = int(round((opacity_pct / 100.0) * 255))
+    return f"{alpha:02x}{b}{g}{r}"
+
+
+def get_excel_col_letter(col_idx):
+    result = ""
+    while col_idx >= 0:
+        result = chr(65 + (col_idx % 26)) + result
+        col_idx = (col_idx // 26) - 1
+    return result
+
+
+# --- Standalone Native XLSX Writer & Reader ---
 def write_simple_xlsx(filepath, rows):
     content_types = (
         '<?xml version="1.0" encoding="UTF-8"?>'
@@ -103,7 +268,7 @@ def write_simple_xlsx(filepath, rows):
     for r_idx, row in enumerate(rows, start=1):
         cells = []
         for c_idx, val in enumerate(row):
-            col_letter = chr(65 + c_idx)
+            col_letter = get_excel_col_letter(c_idx)
             val_str = escape(str(val if val is not None else ""))
             cells.append(f'<c r="{col_letter}{r_idx}" t="inlineStr"><is><t>{val_str}</t></is></c>')
         sheet_rows.append(f'<row r="{r_idx}">{"".join(cells)}</row>')
@@ -138,35 +303,457 @@ def read_simple_xlsx(filepath):
 
         rows_data = []
         for row_el in root.findall('.//m:sheetData/m:row', ns):
-            row_vals = []
-            for c_el in row_el.findall('m:c', ns):
-                c_type = c_el.get('t')
-                if c_type == 's':
-                    v_el = c_el.find('m:v', ns)
-                    idx = int(v_el.text) if v_el is not None and v_el.text else 0
-                    val = shared_strings[idx] if idx < len(shared_strings) else ""
-                elif c_type == 'inlineStr':
-                    t_el = c_el.find('.//m:t', ns)
-                    val = t_el.text if t_el is not None and t_el.text else ""
+            row_dict = {}
+            max_col = 0
+            for c in row_el.findall('m:c', ns):
+                ref = c.attrib.get('r', '')
+                col_letters = ''.join(ch for ch in ref if ch.isalpha())
+                col_idx = 0
+                for ch in col_letters:
+                    col_idx = col_idx * 26 + (ord(ch.upper()) - 64)
+                col_idx -= 1
+                if col_idx > max_col:
+                    max_col = col_idx
+
+                cell_type = c.attrib.get('t', '')
+                val = ""
+                if cell_type == 's':
+                    v_el = c.find('m:v', ns)
+                    if v_el is not None and v_el.text is not None:
+                        idx = int(v_el.text)
+                        if 0 <= idx < len(shared_strings):
+                            val = shared_strings[idx]
+                elif cell_type == 'inlineStr':
+                    t_el = c.find('.//m:t', ns)
+                    if t_el is not None and t_el.text is not None:
+                        val = t_el.text
                 else:
-                    v_el = c_el.find('m:v', ns)
-                    val = v_el.text if v_el is not None and v_el.text else ""
-                row_vals.append(val)
-            rows_data.append(row_vals)
+                    v_el = c.find('m:v', ns)
+                    if v_el is not None and v_el.text is not None:
+                        val = v_el.text
+                row_dict[col_idx] = val
+
+            if row_dict:
+                row_list = [row_dict.get(i, "") for i in range(max_col + 1)]
+                rows_data.append(row_list)
         return rows_data
 
 
-# --- Popup Dialog for 2D Open-Source Map Viewer (Fixed 403 Tile Block) ---
+# --- Popup Dialog for Band, Sector & Border Customization ---
+class BandSectorCustomizationDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.parent_win = parent
+        self.setWindowTitle("Customize Bands, Sectors & Border")
+        self.resize(760, 620)
+
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(18, 18, 18, 18)
+        main_layout.setSpacing(12)
+
+        lbl_header = QLabel("Customize Layers by Band (700, 1800, 2600, C-Band), Sectors (S1-S4) & Border")
+        lbl_header.setStyleSheet("font-size: 15px; font-weight: bold; color: #a9d3a5;")
+        main_layout.addWidget(lbl_header)
+
+        # --- Sector Border On/Off & Color Section ---
+        border_frame = QFrame()
+        border_frame.setObjectName("RadioGroupFrame")
+        border_layout = QHBoxLayout(border_frame)
+        border_layout.setContentsMargins(14, 10, 14, 10)
+
+        lbl_border_title = QLabel("Sector Border (Outline):")
+        lbl_border_title.setStyleSheet("font-weight: bold; color: #4da3ff;")
+        border_layout.addWidget(lbl_border_title)
+
+        self.chk_border_enabled = QCheckBox("Turn Border ON")
+        self.chk_border_enabled.setChecked(True)
+        border_layout.addWidget(self.chk_border_enabled)
+
+        border_layout.addSpacing(20)
+        lbl_b_col = QLabel("Border Color:")
+        border_layout.addWidget(lbl_b_col)
+
+        self.btn_border_color = QPushButton("#FFFFFF")
+        self.btn_border_color.setFixedWidth(120)
+        self.border_color_hex = "#ffffff"
+        self.btn_border_color.clicked.connect(self.pick_border_color)
+        border_layout.addWidget(self.btn_border_color)
+
+        border_layout.addStretch(1)
+        main_layout.addWidget(border_frame)
+
+        # --- Tabs for Bands & Per-Sector ---
+        self.tabs = QTabWidget()
+        self.band_widgets = {}
+        self.sector_widgets = {}
+
+        # Tab 1: Bands Configuration
+        band_tab = QWidget()
+        band_layout = QVBoxLayout(band_tab)
+
+        lbl_band_info = QLabel(
+            "Configure each Band layer below. Checked bands can be generated simultaneously as multi-band layers "
+            "or matched automatically from the 'band' column in Multi-Sites Mode."
+        )
+        lbl_band_info.setWordWrap(True)
+        lbl_band_info.setStyleSheet("font-size: 12px; color: #cccccc;")
+        band_layout.addWidget(lbl_band_info)
+
+        band_grid = QGridLayout()
+        band_grid.setSpacing(10)
+
+        headers = ["Enable Band Layer", "Sector Length (m)", "Beamwidth (°)", "Transparency (%)", "Layer Color Palette"]
+        for c_idx, h_text in enumerate(headers):
+            lbl = QLabel(h_text)
+            lbl.setStyleSheet("font-weight: bold; color: #4da3ff;")
+            band_grid.addWidget(lbl, 0, c_idx)
+
+        band_names = ["Band 700", "Band 1800", "Band 2600", "C-Band"]
+        for r_idx, b_name in enumerate(band_names, start=1):
+            chk = QCheckBox(b_name)
+            inp_len = QLineEdit()
+            inp_wid = QLineEdit()
+            spin_trans = QSpinBox()
+            spin_trans.setRange(0, 100)
+            spin_trans.setSuffix("%")
+
+            btn_color = QPushButton("Pick Color")
+            btn_color.setFixedWidth(120)
+
+            self.band_widgets[b_name] = {
+                "enabled": chk,
+                "length": inp_len,
+                "width": inp_wid,
+                "transparency": spin_trans,
+                "color_btn": btn_color,
+                "color_hex": "#000000"
+            }
+
+            btn_color.clicked.connect(lambda checked, bn=b_name: self.pick_band_color(bn))
+
+            band_grid.addWidget(chk, r_idx, 0)
+            band_grid.addWidget(inp_len, r_idx, 1)
+            band_grid.addWidget(inp_wid, r_idx, 2)
+            band_grid.addWidget(spin_trans, r_idx, 3)
+            band_grid.addWidget(btn_color, r_idx, 4)
+
+        band_layout.addLayout(band_grid)
+        band_layout.addStretch(1)
+        self.tabs.addTab(band_tab, "Band Layers (700 / 1800 / 2600 / C-Band)")
+
+        # Tab 2: Individual Sector Overrides (S1 - S4)
+        sector_tab = QWidget()
+        sector_layout = QVBoxLayout(sector_tab)
+
+        lbl_sec_info = QLabel(
+            "Optional: Enable custom per-sector overrides if you want individual sectors (S1 to S4) "
+            "to use custom length, beamwidth, transparency, or color when not using Band presets."
+        )
+        lbl_sec_info.setWordWrap(True)
+        lbl_sec_info.setStyleSheet("font-size: 12px; color: #cccccc;")
+        sector_layout.addWidget(lbl_sec_info)
+
+        sec_grid = QGridLayout()
+        sec_grid.setSpacing(10)
+
+        sec_headers = ["Custom Sector", "Sector Length (m)", "Beamwidth (°)", "Transparency (%)", "Sector Color Palette"]
+        for c_idx, h_text in enumerate(sec_headers):
+            lbl = QLabel(h_text)
+            lbl.setStyleSheet("font-weight: bold; color: #4da3ff;")
+            sec_grid.addWidget(lbl, 0, c_idx)
+
+        for r_idx, s_name in enumerate(["S1", "S2", "S3", "S4"], start=1):
+            chk = QCheckBox(f"Customize {s_name}")
+            inp_len = QLineEdit()
+            inp_wid = QLineEdit()
+            spin_trans = QSpinBox()
+            spin_trans.setRange(0, 100)
+            spin_trans.setSuffix("%")
+
+            btn_color = QPushButton("Pick Color")
+            btn_color.setFixedWidth(120)
+
+            self.sector_widgets[s_name] = {
+                "use_custom": chk,
+                "length": inp_len,
+                "width": inp_wid,
+                "transparency": spin_trans,
+                "color_btn": btn_color,
+                "color_hex": "#00e5ff"
+            }
+
+            btn_color.clicked.connect(lambda checked, sn=s_name: self.pick_sector_color(sn))
+
+            sec_grid.addWidget(chk, r_idx, 0)
+            sec_grid.addWidget(inp_len, r_idx, 1)
+            sec_grid.addWidget(inp_wid, r_idx, 2)
+            sec_grid.addWidget(spin_trans, r_idx, 3)
+            sec_grid.addWidget(btn_color, r_idx, 4)
+
+        sector_layout.addLayout(sec_grid)
+        sector_layout.addStretch(1)
+        self.tabs.addTab(sector_tab, "Per-Sector Settings (S1 - S4)")
+
+        main_layout.addWidget(self.tabs, 1)
+
+        btn_row = QHBoxLayout()
+        btn_reset = QPushButton("Reset to Defaults")
+        btn_reset.setObjectName("RemoveBtn")
+        btn_reset.clicked.connect(self.reset_to_defaults)
+
+        btn_save = QPushButton("Save Settings")
+        btn_save.setObjectName("CreateOpenBtn")
+        btn_save.clicked.connect(self.save_and_close)
+
+        btn_cancel = QPushButton("Cancel")
+        btn_cancel.setObjectName("BrowseBtn")
+        btn_cancel.clicked.connect(self.reject)
+
+        btn_row.addWidget(btn_reset)
+        btn_row.addStretch(1)
+        btn_row.addWidget(btn_save)
+        btn_row.addWidget(btn_cancel)
+        main_layout.addLayout(btn_row)
+
+    def update_color_button_style(self, btn, hex_color):
+        c = QColor(hex_color)
+        brightness = (c.red() * 299 + c.green() * 587 + c.blue() * 114) / 1000
+        text_col = "#000000" if brightness > 128 else "#ffffff"
+        btn.setText(hex_color.upper())
+        btn.setStyleSheet(
+            f"background-color: {hex_color}; color: {text_col}; "
+            f"font-weight: bold; border: 1px solid #ffffff; border-radius: 4px; padding: 6px;"
+        )
+
+    def pick_border_color(self):
+        color = QColorDialog.getColor(QColor(self.border_color_hex), self, "Pick Sector Border Color")
+        if color.isValid():
+            self.border_color_hex = color.name()
+            self.update_color_button_style(self.btn_border_color, self.border_color_hex)
+
+    def pick_band_color(self, band_name):
+        current_hex = self.band_widgets[band_name]["color_hex"]
+        color = QColorDialog.getColor(QColor(current_hex), self, f"Pick Color for {band_name}")
+        if color.isValid():
+            hex_val = color.name()
+            self.band_widgets[band_name]["color_hex"] = hex_val
+            self.update_color_button_style(self.band_widgets[band_name]["color_btn"], hex_val)
+
+    def pick_sector_color(self, sec_name):
+        current_hex = self.sector_widgets[sec_name]["color_hex"]
+        color = QColorDialog.getColor(QColor(current_hex), self, f"Pick Color for {sec_name}")
+        if color.isValid():
+            hex_val = color.name()
+            self.sector_widgets[sec_name]["color_hex"] = hex_val
+            self.update_color_button_style(self.sector_widgets[sec_name]["color_btn"], hex_val)
+
+    def load_settings_into_ui(self, settings_data):
+        border_cfg = settings_data.get("border", DEFAULT_BAND_SECTOR_SETTINGS["border"])
+        self.chk_border_enabled.setChecked(bool(border_cfg.get("enabled", True)))
+        self.border_color_hex = border_cfg.get("color", "#ffffff")
+        self.update_color_button_style(self.btn_border_color, self.border_color_hex)
+
+        bands_cfg = settings_data.get("bands", DEFAULT_BAND_SECTOR_SETTINGS["bands"])
+        for b_name, w in self.band_widgets.items():
+            b_data = bands_cfg.get(b_name, DEFAULT_BAND_SECTOR_SETTINGS["bands"][b_name])
+            w["enabled"].setChecked(bool(b_data.get("enabled", True)))
+            w["length"].setText(str(b_data.get("length", 140.0)))
+            w["width"].setText(str(b_data.get("width", 60.0)))
+            w["transparency"].setValue(int(b_data.get("transparency", 50)))
+            hex_col = b_data.get("color", "#000000")
+            w["color_hex"] = hex_col
+            self.update_color_button_style(w["color_btn"], hex_col)
+
+        sectors_cfg = settings_data.get("sectors", DEFAULT_BAND_SECTOR_SETTINGS["sectors"])
+        for s_name, w in self.sector_widgets.items():
+            s_data = sectors_cfg.get(s_name, DEFAULT_BAND_SECTOR_SETTINGS["sectors"][s_name])
+            w["use_custom"].setChecked(bool(s_data.get("use_custom", False)))
+            w["length"].setText(str(s_data.get("length", 120.0)))
+            w["width"].setText(str(s_data.get("width", 60.0)))
+            w["transparency"].setValue(int(s_data.get("transparency", 50)))
+            hex_col = s_data.get("color", "#00e5ff")
+            w["color_hex"] = hex_col
+            self.update_color_button_style(w["color_btn"], hex_col)
+
+    def reset_to_defaults(self):
+        self.load_settings_into_ui(json.loads(json.dumps(DEFAULT_BAND_SECTOR_SETTINGS)))
+
+    def save_and_close(self):
+        try:
+            new_settings = {
+                "border": {
+                    "enabled": self.chk_border_enabled.isChecked(),
+                    "color": self.border_color_hex
+                },
+                "bands": {},
+                "sectors": {}
+            }
+            for b_name, w in self.band_widgets.items():
+                new_settings["bands"][b_name] = {
+                    "enabled": w["enabled"].isChecked(),
+                    "length": float(w["length"].text().strip() or 140.0),
+                    "width": float(w["width"].text().strip() or 60.0),
+                    "transparency": int(w["transparency"].value()),
+                    "color": w["color_hex"]
+                }
+
+            for s_name, w in self.sector_widgets.items():
+                new_settings["sectors"][s_name] = {
+                    "use_custom": w["use_custom"].isChecked(),
+                    "length": float(w["length"].text().strip() or 120.0),
+                    "width": float(w["width"].text().strip() or 60.0),
+                    "transparency": int(w["transparency"].value()),
+                    "color": w["color_hex"]
+                }
+
+            self.parent_win.band_sector_settings = new_settings
+            self.parent_win.save_band_sector_settings()
+            self.parent_win.sync_band_checkboxes_from_settings()
+            self.accept()
+        except ValueError:
+            QMessageBox.critical(self, "Invalid Input", "Please enter valid numeric values for Length and Beamwidth.")
+
+
+# --- Clear & Categorized Popup Dialog for Customized Template Export ---
+class CustomTemplateDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.parent_win = parent
+        self.setWindowTitle("Customized Export Template - Select Parameters")
+        self.resize(680, 650)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(12)
+
+        lbl_title = QLabel("Select Columns to Include in Your Custom Template:")
+        lbl_title.setStyleSheet("font-size: 16px; font-weight: bold; color: #a9d3a5;")
+        layout.addWidget(lbl_title)
+
+        lbl_hint = QLabel(
+            "Parameters are organized into clear groups below. Check the items you want to export. "
+            "When you import the filled sheet later, the program automatically maps S1-S4 parameters "
+            "(Antenna Height, RS Power, PCI, MOD, Sector Comment) directly to each sector's popup table!"
+        )
+        lbl_hint.setWordWrap(True)
+        lbl_hint.setStyleSheet("font-size: 12px; color: #cccccc;")
+        layout.addWidget(lbl_hint)
+
+        # Global Quick-Action Buttons
+        sel_row = QHBoxLayout()
+        btn_sel_all = QPushButton("☑ Check All Parameters")
+        btn_sel_all.setObjectName("SaveBtn")
+        btn_sel_all.clicked.connect(self.select_all)
+
+        btn_reset_def = QPushButton("↺ Reset to Recommended")
+        btn_reset_def.setObjectName("BrowseBtn")
+        btn_reset_def.clicked.connect(self.reset_recommended)
+
+        btn_uncheck_opt = QPushButton("☐ Uncheck All Optional")
+        btn_uncheck_opt.setObjectName("BrowseBtn")
+        btn_uncheck_opt.clicked.connect(self.uncheck_all_optional)
+
+        sel_row.addWidget(btn_sel_all)
+        sel_row.addWidget(btn_reset_def)
+        sel_row.addWidget(btn_uncheck_opt)
+        sel_row.addStretch(1)
+        layout.addLayout(sel_row)
+
+        # Scrollable Categorized Groups (2-Column Grid inside each GroupBox for clean reading)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setSpacing(14)
+
+        self.checkboxes = {}
+        self.ordered_keys = []
+
+        for group_title, items in GROUPED_CUSTOM_ATTRIBUTES:
+            group_box = QGroupBox(group_title)
+            group_box.setStyleSheet(
+                "QGroupBox { font-weight: bold; color: #4da3ff; border: 1px solid #484848; "
+                "border-radius: 6px; margin-top: 8px; padding-top: 12px; } "
+                "QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }"
+            )
+            grid = QGridLayout(group_box)
+            grid.setSpacing(8)
+
+            for idx, (col_key, label_text, default_checked, is_mandatory) in enumerate(items):
+                cb = QCheckBox(f"{label_text}  [{col_key}]")
+                cb.setChecked(default_checked)
+                if is_mandatory:
+                    cb.setEnabled(False)
+                self.checkboxes[col_key] = (cb, default_checked, is_mandatory)
+                self.ordered_keys.append(col_key)
+                row_idx = idx // 2
+                col_idx = idx % 2
+                grid.addWidget(cb, row_idx, col_idx)
+
+            scroll_layout.addWidget(group_box)
+
+        scroll_layout.addStretch(1)
+        scroll.setWidget(scroll_content)
+        layout.addWidget(scroll, 1)
+
+        btn_row = QHBoxLayout()
+        btn_exp_csv = QPushButton("Export Custom CSV")
+        btn_exp_csv.setObjectName("ImportBtn")
+        btn_exp_csv.clicked.connect(lambda: self.export_custom(is_excel=False))
+
+        btn_exp_xls = QPushButton("Export Custom Excel (.xlsx)")
+        btn_exp_xls.setObjectName("CreateOpenBtn")
+        btn_exp_xls.clicked.connect(lambda: self.export_custom(is_excel=True))
+
+        btn_close = QPushButton("Cancel")
+        btn_close.setObjectName("BrowseBtn")
+        btn_close.clicked.connect(self.reject)
+
+        btn_row.addWidget(btn_exp_csv, 1)
+        btn_row.addWidget(btn_exp_xls, 1)
+        btn_row.addWidget(btn_close)
+        layout.addLayout(btn_row)
+
+    def select_all(self):
+        for cb, _, _ in self.checkboxes.values():
+            cb.setChecked(True)
+
+    def reset_recommended(self):
+        for cb, default_checked, is_mandatory in self.checkboxes.values():
+            cb.setChecked(True if is_mandatory else default_checked)
+
+    def uncheck_all_optional(self):
+        for cb, _, is_mandatory in self.checkboxes.values():
+            cb.setChecked(True if is_mandatory else False)
+
+    def get_selected_columns(self):
+        return [k for k in self.ordered_keys if self.checkboxes[k][0].isChecked()]
+
+    def export_custom(self, is_excel=False):
+        selected_cols = self.get_selected_columns()
+        if not selected_cols:
+            QMessageBox.warning(self, "Warning", "Please select at least the mandatory columns.")
+            return
+
+        if is_excel:
+            self.parent_win.save_template_file(selected_cols, default_name="custom_site_template.xlsx", is_excel=True)
+        else:
+            self.parent_win.save_template_file(selected_cols, default_name="custom_site_template.csv", is_excel=False)
+        self.accept()
+
+
+# --- Popup Dialog for 2D Open-Source Map Viewer (Maximizable & Default Satellite) ---
 class MapViewerDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("2D Open-Source Map Viewer")
-        self.setFixedSize(920, 660)
+        self.resize(1000, 700)
+        self.setMinimumSize(650, 450)
         self.setWindowFlags(
-            Qt.WindowType.Dialog |
+            Qt.WindowType.Window |
             Qt.WindowType.WindowTitleHint |
-            Qt.WindowType.WindowCloseButtonHint |
-            Qt.WindowType.WindowStaysOnTopHint
+            Qt.WindowType.WindowMinMaxButtonsHint |
+            Qt.WindowType.WindowCloseButtonHint
         )
 
         self.temp_map_file = os.path.join(tempfile.gettempdir(), "gis_layer_creator_2d_map.html")
@@ -177,6 +764,8 @@ class MapViewerDialog(QDialog):
 
         if HAS_WEBENGINE:
             self.web_view = QWebEngineView()
+            settings = self.web_view.settings()
+            settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
             profile = self.web_view.page().profile()
             profile.setHttpUserAgent("GISLayerCreator/1.0 (mailto:ahmadkha202020@gmail.com)")
             layout.addWidget(self.web_view, 1)
@@ -238,6 +827,24 @@ class MapViewerDialog(QDialog):
             font-weight: bold;
             font-size: 12px;
         }}
+        .popup-table {{
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 6px;
+            font-size: 12px;
+        }}
+        .popup-table td {{
+            border: 1px solid #ccc;
+            padding: 3px 6px;
+        }}
+        .popup-table td.key {{
+            font-weight: bold;
+            background-color: #f2f2f2;
+            color: #111;
+        }}
+        .popup-table td.val {{
+            color: #111;
+        }}
     </style>
 </head>
 <body>
@@ -245,28 +852,12 @@ class MapViewerDialog(QDialog):
 <script>
     const sites = {payload_json};
 
-    // 1. CartoDB Voyager (OpenStreetMap Data - Zero 403 blocks)
-    const osmCartoVoyager = L.tileLayer('https://{{s}}.basemaps.cartocdn.com/rastertiles/voyager/{{z}}/{{x}}/{{y}}{{r}}.png', {{
-        subdomains: 'abcd',
-        maxZoom: 20,
-        attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
-    }});
-
-    // 2. CartoDB Dark Matter (OpenStreetMap Dark 2D Map)
-    const osmCartoDark = L.tileLayer('https://{{s}}.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}{{r}}.png', {{
-        subdomains: 'abcd',
-        maxZoom: 20,
-        attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
-    }});
-
-    // 3. Esri World Street Map
-    const esriStreet = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{{z}}/{{y}}/{{x}}', {{
+    const esriSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{{z}}/{{y}}/{{x}}', {{
         maxZoom: 19,
         attribution: 'Tiles &copy; Esri'
     }});
 
-    // 4. Esri Satellite Imagery
-    const esriSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{{z}}/{{y}}/{{x}}', {{
+    const esriStreet = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{{z}}/{{y}}/{{x}}', {{
         maxZoom: 19,
         attribution: 'Tiles &copy; Esri'
     }});
@@ -274,52 +865,65 @@ class MapViewerDialog(QDialog):
     const map = L.map('map', {{
         center: [30.0444, 31.2357],
         zoom: 13,
-        layers: [osmCartoVoyager]
+        layers: [esriSatellite]
     }});
 
     const baseMaps = {{
-        "OpenStreetMap (2D Street)": osmCartoVoyager,
-        "OpenStreetMap (Dark Mode)": osmCartoDark,
-        "Esri Street Map": esriStreet,
-        "Satellite Imagery (Esri)": esriSatellite
+        "Satellite Imagery (Esri)": esriSatellite,
+        "Esri Street Map": esriStreet
     }};
     L.control.layers(baseMaps).addTo(map);
 
     const featureGroup = L.featureGroup().addTo(map);
-    const sectorColors = ['#00e5ff', '#ffeb3b', '#ff5252', '#69f0ae'];
+    const fallbackColors = ['#00e5ff', '#ffeb3b', '#ff5252', '#69f0ae'];
+
+    function buildExtraHtml(extraObj) {{
+        if (!extraObj || Object.keys(extraObj).length === 0) return "";
+        let rows = "";
+        for (const [k, v] of Object.entries(extraObj)) {{
+            rows += `<tr><td class="key">${{k}}</td><td class="val">${{v}}</td></tr>`;
+        }}
+        return `<table class="popup-table">${{rows}}</table>`;
+    }}
 
     sites.forEach(site => {{
         const titleLabel = site.option_name ? (site.site_name + " - " + site.option_name) : site.site_name;
+        const siteExtraHtml = buildExtraHtml(site.extra_data);
 
-        // 1. Draw Sector Polygons
         if (site.layer_mode === 'sector' || site.layer_mode === 'both') {{
             site.polygons.forEach((poly, idx) => {{
-                const color = sectorColors[idx % sectorColors.length];
+                const color = poly.color || fallbackColors[idx % fallbackColors.length];
+                const fillOp = (poly.opacity !== undefined) ? poly.opacity : 0.5;
+                const hasBorder = (poly.border_enabled !== undefined) ? poly.border_enabled : true;
+                const borderCol = poly.border_color || '#ffffff';
+                const polyExtraHtml = buildExtraHtml(poly.sector_extra || site.extra_data);
+
                 const p = L.polygon(poly.coords, {{
-                    color: '#111111',
-                    weight: 2,
+                    stroke: hasBorder,
+                    color: borderCol,
+                    weight: hasBorder ? 2 : 0,
                     fillColor: color,
-                    fillOpacity: 0.55
+                    fillOpacity: fillOp
                 }}).addTo(featureGroup);
-                p.bindPopup(`<b>${{titleLabel}}</b><br>${{poly.name}}<br>Length: ${{site.length}}m | Width: ${{site.sector_width}}&deg;`);
+                p.bindPopup(`<b>${{titleLabel}}</b><br>${{poly.name}}<br>Length: ${{poly.length}}m | Width: ${{poly.width}}&deg;${{polyExtraHtml}}`);
             }});
         }}
 
-        // 2. Draw Sector Azimuth Lines
         if (site.layer_mode === 'lines') {{
             site.lines.forEach((lin, idx) => {{
+                const color = lin.color || '#00e5ff';
+                const linExtraHtml = buildExtraHtml(lin.sector_extra || site.extra_data);
                 const l = L.polyline(lin.coords, {{
-                    color: '#d83b01',
+                    color: color,
                     weight: 4
                 }}).addTo(featureGroup);
-                l.bindPopup(`<b>${{titleLabel}}</b><br>${{lin.name}}<br>Length: ${{site.length}}m`);
+                l.bindPopup(`<b>${{titleLabel}}</b><br>${{lin.name}}<br>Length: ${{lin.length}}m${{linExtraHtml}}`);
             }});
         }}
 
-        // 3. Draw Site Pin Marker
         if (site.layer_mode === 'pin' || site.layer_mode === 'both' || site.layer_mode === 'lines') {{
             const m = L.marker([site.lat, site.lon]).addTo(featureGroup);
-            m.bindPopup(`<b>${{titleLabel}}</b><br>Lat, Long: ${{site.lat}}, ${{site.lon}}`);
+            m.bindPopup(`<b>${{titleLabel}}</b><br>Lat, Long: ${{site.lat}}, ${{site.lon}}${{siteExtraHtml}}`);
             m.bindTooltip(titleLabel, {{
                 permanent: true,
                 direction: 'top',
@@ -355,13 +959,7 @@ class HistoryPopupDialog(QDialog):
         super().__init__(parent)
         self.parent_win = parent
         self.setWindowTitle("Saved Sites History")
-        self.setFixedSize(360, 480)
-        self.setWindowFlags(
-            Qt.WindowType.Dialog |
-            Qt.WindowType.WindowTitleHint |
-            Qt.WindowType.WindowCloseButtonHint |
-            Qt.WindowType.WindowStaysOnTopHint
-        )
+        self.resize(380, 500)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(15, 15, 15, 15)
@@ -389,21 +987,16 @@ class HistoryPopupDialog(QDialog):
         layout.addLayout(btn_row)
 
 
-# --- Popup Dialog for "How to Use?" User Guide ---
+# --- Popup Dialog for "How to use?" Operational Guide ---
 class HowToUseDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("How to Use - User Guide")
-        self.setFixedSize(680, 580)
-        self.setWindowFlags(
-            Qt.WindowType.Dialog |
-            Qt.WindowType.WindowTitleHint |
-            Qt.WindowType.WindowCloseButtonHint |
-            Qt.WindowType.WindowStaysOnTopHint
-        )
+        self.setWindowTitle("How to Use - GIS Layer Creator")
+        self.setFixedSize(720, 640)
 
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(15, 15, 15, 15)
+        main_layout.setContentsMargins(18, 18, 18, 18)
+        main_layout.setSpacing(12)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -411,67 +1004,39 @@ class HowToUseDialog(QDialog):
 
         content_widget = QWidget()
         content_layout = QVBoxLayout(content_widget)
-        content_layout.setSpacing(12)
+        content_layout.setContentsMargins(10, 10, 10, 10)
 
         guide_html = """
-        <h2 style='color:#a9d3a5; margin-bottom:5px;'>GIS Layer Creator - User Guide</h2>
-        <p>Welcome to <b>GIS Layer Creator</b>! This guide details how to operate every single feature and tool in the application:</p>
+        <h2 style='color:#a9d3a5; margin-top:0;'>GIS Layer Creator - Complete User Guide</h2>
+        <p>Welcome to <b>GIS Layer Creator</b>. Below is the complete guide on how to use every feature:</p>
 
-        <h3 style='color:#4da3ff;'>1. Global Settings (Header)</h3>
+        <h3 style='color:#4da3ff;'>1. Customize Bands, Sectors & Sector Border</h3>
         <ul>
-            <li><b>Output Folder:</b> Choose the folder where generated <code>.kml</code> files are saved (defaults to Desktop). Click <b>Browse</b> or change it via <b>File &rarr; Change Output Folder</b>.</li>
-            <li><b>Open KML File With:</b> Select your preferred external GIS application (<b>Google Earth</b>, <b>QGIS</b>, or <b>ArcGIS Earth</b>).</li>
+            <li><b>Sector Border On/Off & Color:</b> Turn the polygon border outline ON or OFF and pick any border color from the color palette.</li>
+            <li><b>Band Layers (700 / 1800 / 2600 / C-Band):</b> Configure each band's Sector Length (defaults: 700=140m, 1800=170m, 2600=100m, C-Band=300m), Beamwidth (60°), Transparency (50%), and Color Palette (C-Band defaults to Black).</li>
+            <li><b>Per-Sector Settings (S1 - S4):</b> Customize length, beamwidth, transparency, and color for each individual sector.</li>
         </ul>
 
-        <h3 style='color:#4da3ff;'>2. One Site Mode</h3>
+        <h3 style='color:#4da3ff;'>2. Customized Export Template (Categorized Checklist)</h3>
         <ul>
-            <li><b>Site Name / Option:</b> Enter the site identifier (e.g. <code>LCAIE10480</code>) and optional antenna/carrier label (e.g. <code>Opt1</code>).</li>
-            <li><b>Latitude, Longitude:</b> Coordinates separated by a comma (e.g. <code>30.0444, 31.2357</code>).</li>
-            <li><b>Sector Length (m):</b> Distance/radius of the sector in meters (default: <code>120m</code>).</li>
-            <li><b>Sector Width (°):</b> Beamwidth angle in degrees (default: <code>60°</code>).</li>
-            <li><b>Azimuths (S1 to S4):</b> True azimuth angles (0° to 360°) for sectors 1 through 4. Empty fields are skipped.</li>
-            <li><b>Layer Output Type:</b>
+            <li>Click <b>Customized Export Template (Checklist)...</b> to choose from clearly organized groups:
                 <ul>
-                    <li><b>Pin Only:</b> Generates only the location placemark icon.</li>
-                    <li><b>Sectorized Only:</b> Generates the sector pie-wedge polygons only.</li>
-                    <li><b>Lines:</b> Draws straight directional radial lines along the given azimuths instead of polygons.</li>
-                    <li><b>Both:</b> Generates both the site pin icon and the sector polygons.</li>
+                    <li><b>Basic & Site Info:</b> Site Name, Lat, Long, Option, Band, Site Type, Length, Width, General Comment.</li>
+                    <li><b>Sector Azimuths:</b> az-a, az-b, az-c, az-d.</li>
+                    <li><b>Antenna Height (S1-S4):</b> antenna height s1, s2, s3, s4.</li>
+                    <li><b>RS Power (S1-S4):</b> rs power s1, s2, s3, s4.</li>
+                    <li><b>PCI & MOD (S1-S4):</b> pci s1..s4, mod s1..s4.</li>
+                    <li><b>Sector Comments:</b> comment s1, s2, s3, s4.</li>
                 </ul>
             </li>
-            <li><b>Save Site to History:</b> Stores the site data into local history for future reuse.</li>
-            <li><b>Create Layer / Create and Open Layer:</b> Saves the <code>.kml</code> layer to the output folder and optionally opens it in your chosen GIS viewer.</li>
-            <li><b>View in Map:</b> Opens a built-in <b>2D Open-Source Map (OpenStreetMap / Satellite)</b> popup window and plots your site layers (Pins, Sectors, or Lines) directly without opening Google Earth!</li>
+            <li>When imported, each sector's specific data (e.g., S1 Height, S1 RS Power, S1 PCI, S1 MOD, S1 Comment) automatically appears in that sector's KML & 2D Map popup table!</li>
         </ul>
 
-        <h3 style='color:#4da3ff;'>3. Multi Sites Mode (Batch Processing)</h3>
+        <h3 style='color:#4da3ff;'>3. View Menu (Always on Top & Dark Mode)</h3>
         <ul>
-            <li><b>Export CSV / Excel Template:</b> Click to generate a clean template file pre-formatted with the required columns:
-            <br><code>site name, option, lat, long, az-a, az-b, az-c, az-d, line length</code>.</li>
-            <li><b>Select Filled File:</b> Browse and pick your prepared <code>.csv</code> or <code>.xlsx</code> file.</li>
-            <li><b>Default Length / Width:</b> Fallback length and beamwidth used for any row where <code>line length</code> is left blank.</li>
-            <li><b>Output File Name:</b> Specify the KML filename (e.g. <code>imported_multi_sites.kml</code>).</li>
-            <li><b>Create / Create & Open Multi-Sites Layer:</b> Builds all sites into organized KML folders and automatically registers them into your History list.</li>
-            <li><b>View in Map:</b> Plots all sites from your selected template file directly onto the 2D OpenStreetMap popup window!</li>
-        </ul>
-
-        <h3 style='color:#4da3ff;'>4. History Management</h3>
-        <ul>
-            <li><b>View History:</b> Access via <b>History &rarr; View History</b> in the top bar to open the popup list of all saved sites.</li>
-            <li><b>Load Site:</b> Click any site name in the popup list to immediately load its parameters back into <i>One Site Mode</i>.</li>
-            <li><b>Export History:</b> Exports all saved sites with a timestamped filename (<code>exported history YYYY-MM-DD_HH-MM-SS.csv</code> or <code>.xlsx</code>).</li>
-            <li><b>Clear All History:</b> Resets the saved history list completely.</li>
-        </ul>
-
-        <h3 style='color:#4da3ff;'>5. View & Themes</h3>
-        <ul>
-            <li>Switch between <b>Dark Mode On</b> and <b>Dark Mode Off</b> via the <b>View</b> menu at any time.</li>
-        </ul>
-
-        <h3 style='color:#4da3ff;'>6. Help & Support</h3>
-        <ul>
-            <li><b>How to use?:</b> Opens this complete operational guide (updated with every new tool added).</li>
-            <li><b>About App?:</b> View summary info and developer credits.</li>
-            <li><b>Support:</b> Direct contact information via Email and WhatsApp.</li>
+            <li><b>Always on Top On / Off:</b> Toggle whether the main application window stays pinned above all other desktop windows.</li>
+            <li><b>View History:</b> Opens the saved sites history popup window.</li>
+            <li><b>Dark Mode On / Off:</b> Switch between Dark and Light themes at any time.</li>
         </ul>
         """
 
@@ -494,24 +1059,20 @@ class SiteLayerCreator(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("GIS Layer Creator")
-
-        # 1. Remove Maximize button & Make Always On Top
-        self.setWindowFlags(
-            Qt.WindowType.Window |
-            Qt.WindowType.WindowTitleHint |
-            Qt.WindowType.WindowMinimizeButtonHint |
-            Qt.WindowType.WindowCloseButtonHint |
-            Qt.WindowType.WindowStaysOnTopHint
-        )
-        self.setFixedSize(850, 750)
-
+        self.always_on_top = True
         self.dark_mode = True
-        self.history_data = self.load_history()
 
-        # Popup Dialogs
+        self.apply_window_flags(initial=True)
+        self.setFixedSize(880, 820)
+
+        self.history_data = self.load_history()
+        self.band_sector_settings = self.load_band_sector_settings()
+
         self.history_dialog = HistoryPopupDialog(self)
         self.how_to_use_dialog = HowToUseDialog(self)
         self.map_viewer_dialog = MapViewerDialog(self)
+        self.custom_template_dialog = CustomTemplateDialog(self)
+        self.band_sector_dialog = BandSectorCustomizationDialog(self)
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -519,24 +1080,87 @@ class SiteLayerCreator(QMainWindow):
         self.create_menu_bar()
         self.init_ui(central_widget)
         self.populate_history_list()
+        self.sync_band_checkboxes_from_settings()
         self.apply_theme()
 
-    # ==========================================
-    # Top Menu Bar: File, History, View, Help
-    # ==========================================
+    def apply_window_flags(self, initial=False):
+        flags = (
+            Qt.WindowType.Window |
+            Qt.WindowType.WindowTitleHint |
+            Qt.WindowType.WindowMinimizeButtonHint |
+            Qt.WindowType.WindowCloseButtonHint
+        )
+        if self.always_on_top:
+            flags |= Qt.WindowType.WindowStaysOnTopHint
+        self.setWindowFlags(flags)
+        if not initial:
+            self.show()
+            self.raise_()
+            self.activateWindow()
+
+    def set_always_on_top(self, enabled):
+        self.always_on_top = enabled
+        if hasattr(self, "act_top_on") and hasattr(self, "act_top_off"):
+            self.act_top_on.setChecked(enabled)
+            self.act_top_off.setChecked(not enabled)
+        self.apply_window_flags(initial=False)
+
+    def load_band_sector_settings(self):
+        if os.path.exists(BAND_SETTINGS_FILE):
+            try:
+                with open(BAND_SETTINGS_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if "bands" in data and "sectors" in data:
+                        if "border" not in data:
+                            data["border"] = json.loads(json.dumps(DEFAULT_BAND_SECTOR_SETTINGS["border"]))
+                        return data
+            except Exception:
+                pass
+        return json.loads(json.dumps(DEFAULT_BAND_SECTOR_SETTINGS))
+
+    def save_band_sector_settings(self):
+        try:
+            with open(BAND_SETTINGS_FILE, "w", encoding="utf-8") as f:
+                json.dump(self.band_sector_settings, f, indent=4)
+        except Exception:
+            pass
+
+    def open_band_sector_dialog(self):
+        self.band_sector_dialog.load_settings_into_ui(self.band_sector_settings)
+        self.band_sector_dialog.show()
+        self.band_sector_dialog.raise_()
+        self.band_sector_dialog.activateWindow()
+
+    def sync_band_checkboxes_from_settings(self):
+        bands_cfg = self.band_sector_settings.get("bands", {})
+        for b_name, chk in self.one_site_band_checks.items():
+            chk.blockSignals(True)
+            chk.setChecked(bool(bands_cfg.get(b_name, {}).get("enabled", True)))
+            chk.blockSignals(False)
+
+    def on_quick_band_check_changed(self):
+        for b_name, chk in self.one_site_band_checks.items():
+            if b_name in self.band_sector_settings["bands"]:
+                self.band_sector_settings["bands"][b_name]["enabled"] = chk.isChecked()
+        self.save_band_sector_settings()
+
     def create_menu_bar(self):
         menu_bar = self.menuBar()
 
         # 1. File Menu
         file_menu = menu_bar.addMenu("File")
 
-        export_csv_action = QAction("Export Template CSV", self)
-        export_csv_action.triggered.connect(self.export_template_csv)
-        file_menu.addAction(export_csv_action)
+        export_simple_csv_action = QAction("Export Simple Template (CSV)", self)
+        export_simple_csv_action.triggered.connect(self.export_simple_template_csv)
+        file_menu.addAction(export_simple_csv_action)
 
-        export_excel_action = QAction("Export Template Excel", self)
-        export_excel_action.triggered.connect(self.export_template_excel)
-        file_menu.addAction(export_excel_action)
+        export_simple_xls_action = QAction("Export Simple Template (Excel)", self)
+        export_simple_xls_action.triggered.connect(self.export_simple_template_excel)
+        file_menu.addAction(export_simple_xls_action)
+
+        export_custom_action = QAction("Customized Export Template...", self)
+        export_custom_action.triggered.connect(self.open_custom_template_dialog)
+        file_menu.addAction(export_custom_action)
 
         file_menu.addSeparator()
 
@@ -544,7 +1168,42 @@ class SiteLayerCreator(QMainWindow):
         change_output_action.triggered.connect(self.browse_output_directory)
         file_menu.addAction(change_output_action)
 
-        # 2. History Menu
+        # 2. Settings Menu
+        settings_menu = menu_bar.addMenu("Settings")
+        customize_bands_action = QAction("Customize Bands, Sectors & Border...", self)
+        customize_bands_action.triggered.connect(self.open_band_sector_dialog)
+        settings_menu.addAction(customize_bands_action)
+
+        # 3. View Menu (Includes View History, Always on Top On/Off, Dark Mode On/Off)
+        view_menu = menu_bar.addMenu("View")
+
+        view_history_from_view = QAction("View History (Popup Window)", self)
+        view_history_from_view.triggered.connect(self.show_history_popup)
+        view_menu.addAction(view_history_from_view)
+
+        view_menu.addSeparator()
+
+        self.act_top_on = QAction("Always on Top On", self, checkable=True)
+        self.act_top_on.setChecked(True)
+        self.act_top_on.triggered.connect(lambda: self.set_always_on_top(True))
+        view_menu.addAction(self.act_top_on)
+
+        self.act_top_off = QAction("Always on Top Off", self, checkable=True)
+        self.act_top_off.setChecked(False)
+        self.act_top_off.triggered.connect(lambda: self.set_always_on_top(False))
+        view_menu.addAction(self.act_top_off)
+
+        view_menu.addSeparator()
+
+        dark_on_action = QAction("Dark Mode On", self)
+        dark_on_action.triggered.connect(lambda: self.set_dark_mode(True))
+        view_menu.addAction(dark_on_action)
+
+        dark_off_action = QAction("Dark Mode Off", self)
+        dark_off_action.triggered.connect(lambda: self.set_dark_mode(False))
+        view_menu.addAction(dark_off_action)
+
+        # 4. History Menu
         history_menu = menu_bar.addMenu("History")
 
         view_history_action = QAction("View History", self)
@@ -561,18 +1220,7 @@ class SiteLayerCreator(QMainWindow):
         clear_history_action.triggered.connect(self.clear_history)
         history_menu.addAction(clear_history_action)
 
-        # 3. View Menu
-        view_menu = menu_bar.addMenu("View")
-
-        dark_on_action = QAction("Dark Mode On", self)
-        dark_on_action.triggered.connect(lambda: self.set_dark_mode(True))
-        view_menu.addAction(dark_on_action)
-
-        dark_off_action = QAction("Dark Mode Off", self)
-        dark_off_action.triggered.connect(lambda: self.set_dark_mode(False))
-        view_menu.addAction(dark_off_action)
-
-        # 4. Help Menu
+        # 5. Help Menu
         help_menu = menu_bar.addMenu("Help")
 
         how_to_use_action = QAction("How to use?", self)
@@ -589,35 +1237,30 @@ class SiteLayerCreator(QMainWindow):
         support_action.triggered.connect(self.show_support_dialog)
         help_menu.addAction(support_action)
 
-    # ==========================================
-    # Main UI Layout
-    # ==========================================
     def init_ui(self, central_widget):
         main_layout = QVBoxLayout(central_widget)
-        main_layout.setContentsMargins(25, 20, 25, 20)
-        main_layout.setSpacing(14)
+        main_layout.setContentsMargins(25, 16, 25, 16)
+        main_layout.setSpacing(12)
 
-        # Header Logo + Title
+        # Header: Logo + Title
         header_layout = QHBoxLayout()
         header_layout.setSpacing(20)
         header_layout.setContentsMargins(10, 0, 0, 5)
 
         self.logo_lbl = QLabel()
-        if LOGO_B64:
-            b64_str = LOGO_B64.strip()
-            missing_padding = len(b64_str) % 4
-            if missing_padding:
-                b64_str += '=' * (4 - missing_padding)
-
-            logo_bytes = base64.b64decode(b64_str)
+        try:
+            logo_bytes = decode_base64_safely(LOGO_B64)
             pixmap = QPixmap()
             pixmap.loadFromData(logo_bytes)
-            pixmap = pixmap.scaled(
-                100, 100,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation
-            )
-            self.logo_lbl.setPixmap(pixmap)
+            if not pixmap.isNull():
+                pixmap = pixmap.scaled(
+                    90, 90,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation
+                )
+                self.logo_lbl.setPixmap(pixmap)
+        except Exception:
+            pass
         header_layout.addWidget(self.logo_lbl)
 
         self.title_lbl = QLabel()
@@ -626,38 +1269,46 @@ class SiteLayerCreator(QMainWindow):
         header_layout.addWidget(self.title_lbl)
         header_layout.addStretch(1)
 
+        btn_top_customize = QPushButton("⚙ Customize Bands, Sectors & Border")
+        btn_top_customize.setObjectName("ViewMapBtn")
+        btn_top_customize.clicked.connect(self.open_band_sector_dialog)
+        header_layout.addWidget(btn_top_customize)
+
         main_layout.addLayout(header_layout)
 
-        # Shared Top Settings: Output Folder & Open With App
+        # Shared Top Settings: Output Folder + Open With
         shared_grid = QGridLayout()
         shared_grid.setSpacing(10)
+        shared_grid.setColumnStretch(1, 1)
 
         lbl_output = QLabel("Output Folder")
         lbl_output.setFixedWidth(150)
         self.input_output = QLineEdit()
-        desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
-        self.input_output.setText(desktop_path)
+        default_desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+        self.input_output.setText(default_desktop if os.path.exists(default_desktop) else "")
+        self.input_output.setPlaceholderText("Select folder to save KML file...")
 
         btn_browse_output = QPushButton("Browse")
         btn_browse_output.setObjectName("BrowseBtn")
+        btn_browse_output.setFixedWidth(90)
         btn_browse_output.clicked.connect(self.browse_output_directory)
 
         shared_grid.addWidget(lbl_output, 0, 0)
         shared_grid.addWidget(self.input_output, 0, 1)
         shared_grid.addWidget(btn_browse_output, 0, 2)
 
-        self.lbl_app_choice = QLabel("Open KML File With:")
-        self.combo_app_choice = QComboBox()
-        self.combo_app_choice.addItems(["Google Earth", "QGIS", "ArcGIS Earth"])
+        self.lbl_viewer = QLabel("Open KML File With:")
+        self.combo_viewer = QComboBox()
+        self.combo_viewer.addItems(["Google Earth", "QGIS", "ArcGIS Earth"])
 
-        shared_grid.addWidget(self.lbl_app_choice, 1, 0)
-        shared_grid.addWidget(self.combo_app_choice, 1, 1, 1, 2)
+        shared_grid.addWidget(self.lbl_viewer, 1, 0)
+        shared_grid.addWidget(self.combo_viewer, 1, 1, 1, 2)
 
         main_layout.addLayout(shared_grid)
 
-        # Mode Switcher Buttons
-        mode_tab_layout = QHBoxLayout()
-        mode_tab_layout.setSpacing(10)
+        # Mode Switcher Tabs
+        mode_tabs_layout = QHBoxLayout()
+        mode_tabs_layout.setSpacing(12)
 
         self.btn_mode_one = QPushButton("ONE SITE MODE")
         self.btn_mode_one.setCheckable(True)
@@ -665,16 +1316,16 @@ class SiteLayerCreator(QMainWindow):
         self.btn_mode_one.setObjectName("ModeTabBtn")
         self.btn_mode_one.clicked.connect(lambda: self.switch_mode(0))
 
-        self.btn_mode_multi = QPushButton("MULTI SITES MODE (TEMPLATE)")
+        self.btn_mode_multi = QPushButton("MULTI SITES MODE (CSV / EXCEL)")
         self.btn_mode_multi.setCheckable(True)
         self.btn_mode_multi.setObjectName("ModeTabBtn")
         self.btn_mode_multi.clicked.connect(lambda: self.switch_mode(1))
 
-        mode_tab_layout.addWidget(self.btn_mode_one, 1)
-        mode_tab_layout.addWidget(self.btn_mode_multi, 1)
-        main_layout.addLayout(mode_tab_layout)
+        mode_tabs_layout.addWidget(self.btn_mode_one)
+        mode_tabs_layout.addWidget(self.btn_mode_multi)
+        main_layout.addLayout(mode_tabs_layout)
 
-        # Stacked Widget for Both Modes
+        # Stacked Widget for the 2 Modes
         self.stacked_modes = QStackedWidget()
         self.page_one_site = self.build_one_site_page()
         self.page_multi_sites = self.build_multi_sites_page()
@@ -684,24 +1335,18 @@ class SiteLayerCreator(QMainWindow):
 
         main_layout.addWidget(self.stacked_modes, 1)
 
-    # ==========================================
-    # Page 1: One Site Mode
-    # ==========================================
     def build_one_site_page(self):
         page = QFrame()
         page.setObjectName("ModeBox")
         layout = QVBoxLayout(page)
-        layout.setSpacing(14)
-        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(12)
+        layout.setContentsMargins(18, 16, 18, 16)
 
         form_layout = QGridLayout()
-        form_layout.setSpacing(12)
-        form_layout.setColumnStretch(1, 1)
-        form_layout.setColumnStretch(2, 1)
-        form_layout.setColumnStretch(3, 1)
-        form_layout.setColumnStretch(4, 1)
+        form_layout.setSpacing(10)
+        for c in range(1, 5):
+            form_layout.setColumnStretch(c, 1)
 
-        # Site Name & Option
         lbl_name = QLabel("Site Name / Option")
         lbl_name.setFixedWidth(150)
         self.input_name = QLineEdit()
@@ -709,36 +1354,30 @@ class SiteLayerCreator(QMainWindow):
 
         self.input_option = QLineEdit()
         self.input_option.setPlaceholderText("Option")
-        self.input_option.setFixedWidth(140)
 
         form_layout.addWidget(lbl_name, 0, 0)
         form_layout.addWidget(self.input_name, 0, 1, 1, 3)
         form_layout.addWidget(self.input_option, 0, 4)
 
-        # Lat, Long
         lbl_coords = QLabel("Latitude, Longitude")
         self.input_coords = QLineEdit()
-        self.input_coords.setPlaceholderText("Lat, Long (e.g. 30.0444, 31.2357)")
+        self.input_coords.setPlaceholderText("e.g. 30.0444, 31.2357")
 
         form_layout.addWidget(lbl_coords, 1, 0)
         form_layout.addWidget(self.input_coords, 1, 1, 1, 4)
 
-        # Sector Length (Default 120) & Sector Width (Default 60)
-        self.lbl_length = QLabel("Sector Length (m)")
+        lbl_length = QLabel("Default Length (m)")
         self.input_length = QLineEdit("120")
-        self.input_length.setPlaceholderText("120")
 
-        self.lbl_width = QLabel("Sector Width °")
+        self.lbl_width = QLabel("Default Width °")
         self.lbl_width.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.input_width = QLineEdit("60")
-        self.input_width.setPlaceholderText("60")
 
-        form_layout.addWidget(self.lbl_length, 2, 0)
-        form_layout.addWidget(self.input_length, 2, 1, 1, 2)
+        form_layout.addWidget(lbl_length, 2, 0)
+        form_layout.addWidget(self.input_length, 2, 1)
         form_layout.addWidget(self.lbl_width, 2, 3)
         form_layout.addWidget(self.input_width, 2, 4)
 
-        # Sector Headers (S1, S2, S3, S4)
         headers = ["", "S1", "S2", "S3", "S4"]
         for i, text in enumerate(headers):
             lbl = QLabel(text)
@@ -746,25 +1385,50 @@ class SiteLayerCreator(QMainWindow):
             lbl.setStyleSheet("font-weight: bold;")
             form_layout.addWidget(lbl, 3, i)
 
-        # Azimuth inputs
-        self.lbl_azimuth = QLabel("Azimuth °")
-        form_layout.addWidget(self.lbl_azimuth, 4, 0)
+        lbl_azimuth = QLabel("Azimuth °")
+        form_layout.addWidget(lbl_azimuth, 4, 0)
 
         self.az_inputs = []
         for i in range(4):
             inp = QLineEdit()
-            inp.setPlaceholderText("-")
-            inp.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            inp.setPlaceholderText(f"S{i+1} Az")
             self.az_inputs.append(inp)
             form_layout.addWidget(inp, 4, i + 1)
 
         layout.addLayout(form_layout)
 
-        # Layer Output Type Radio Group (Pin Only, Sectorized Only, Lines, Both)
+        # Band Layer Selection Bar in One Site Mode
+        band_frame = QFrame()
+        band_frame.setObjectName("RadioGroupFrame")
+        band_layout = QHBoxLayout(band_frame)
+        band_layout.setContentsMargins(15, 8, 15, 8)
+
+        self.chk_use_band_layers = QCheckBox("Generate Band Layers:")
+        self.chk_use_band_layers.setChecked(True)
+        self.chk_use_band_layers.setStyleSheet("color: #a9d3a5; font-weight: bold;")
+        band_layout.addWidget(self.chk_use_band_layers)
+
+        self.one_site_band_checks = {}
+        for b_name in ["Band 700", "Band 1800", "Band 2600", "C-Band"]:
+            cb = QCheckBox(b_name)
+            cb.setChecked(True)
+            cb.toggled.connect(self.on_quick_band_check_changed)
+            self.one_site_band_checks[b_name] = cb
+            band_layout.addWidget(cb)
+
+        btn_cfg_bands = QPushButton("Settings / Border / Colors...")
+        btn_cfg_bands.setObjectName("BrowseBtn")
+        btn_cfg_bands.clicked.connect(self.open_band_sector_dialog)
+        band_layout.addStretch(1)
+        band_layout.addWidget(btn_cfg_bands)
+
+        layout.addWidget(band_frame)
+
+        # Layer Output Type Radio Group
         radio_frame = QFrame()
         radio_frame.setObjectName("RadioGroupFrame")
         radio_layout = QHBoxLayout(radio_frame)
-        radio_layout.setContentsMargins(15, 10, 15, 10)
+        radio_layout.setContentsMargins(15, 8, 15, 8)
 
         self.lbl_one_type = QLabel("Layer Output Type:")
         radio_layout.addWidget(self.lbl_one_type)
@@ -785,7 +1449,6 @@ class SiteLayerCreator(QMainWindow):
         layout.addWidget(radio_frame)
         layout.addStretch(1)
 
-        # Action Buttons
         btn_save = QPushButton("Save Site to History")
         btn_save.setObjectName("SaveBtn")
         btn_save.clicked.connect(lambda: self.save_to_history(show_message=True))
@@ -811,50 +1474,52 @@ class SiteLayerCreator(QMainWindow):
 
         return page
 
-    # ==========================================
-    # Page 2: Multi Sites Mode
-    # ==========================================
     def build_multi_sites_page(self):
         page = QFrame()
         page.setObjectName("ModeBox")
         layout = QVBoxLayout(page)
-        layout.setSpacing(14)
-        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(12)
+        layout.setContentsMargins(18, 16, 18, 16)
 
         grid = QGridLayout()
-        grid.setSpacing(12)
+        grid.setSpacing(10)
         grid.setColumnStretch(1, 1)
         grid.setColumnStretch(2, 1)
 
-        # 1. Export Templates
-        lbl_step1 = QLabel("1. Template File")
+        lbl_step1 = QLabel("1. Simple Template")
         lbl_step1.setFixedWidth(150)
 
-        btn_template_csv = QPushButton("Export CSV Template")
+        btn_template_csv = QPushButton("Simple CSV Template")
         btn_template_csv.setObjectName("ImportBtn")
-        btn_template_csv.clicked.connect(self.export_template_csv)
+        btn_template_csv.clicked.connect(self.export_simple_template_csv)
 
-        btn_template_xls = QPushButton("Export Excel Template")
+        btn_template_xls = QPushButton("Simple Excel Template")
         btn_template_xls.setObjectName("SaveBtn")
-        btn_template_xls.clicked.connect(self.export_template_excel)
+        btn_template_xls.clicked.connect(self.export_simple_template_excel)
 
         grid.addWidget(lbl_step1, 0, 0)
         grid.addWidget(btn_template_csv, 0, 1)
         grid.addWidget(btn_template_xls, 0, 2, 1, 2)
 
-        # 2. Select Template File
+        lbl_step_custom = QLabel("   Custom Template")
+        btn_custom_tmpl = QPushButton("Customized Export Template (Categorized Checklist)...")
+        btn_custom_tmpl.setObjectName("ViewMapBtn")
+        btn_custom_tmpl.clicked.connect(self.open_custom_template_dialog)
+
+        grid.addWidget(lbl_step_custom, 1, 0)
+        grid.addWidget(btn_custom_tmpl, 1, 1, 1, 3)
+
         lbl_step2 = QLabel("2. Select Filled File")
         self.input_csv_path = QLineEdit()
-        self.input_csv_path.setPlaceholderText("Browse and select your filled CSV or Excel (.xlsx) file...")
+        self.input_csv_path.setPlaceholderText("Browse and select your filled Simple or Customized (.csv / .xlsx) file...")
         btn_browse_csv = QPushButton("Browse File")
         btn_browse_csv.setObjectName("BrowseBtn")
         btn_browse_csv.clicked.connect(self.browse_csv_file)
 
-        grid.addWidget(lbl_step2, 1, 0)
-        grid.addWidget(self.input_csv_path, 1, 1, 1, 2)
-        grid.addWidget(btn_browse_csv, 1, 3)
+        grid.addWidget(lbl_step2, 2, 0)
+        grid.addWidget(self.input_csv_path, 2, 1, 1, 2)
+        grid.addWidget(btn_browse_csv, 2, 3)
 
-        # 3. Default Length & Width
         lbl_multi_len = QLabel("Default Length (m)")
         self.input_multi_length = QLineEdit("120")
 
@@ -862,25 +1527,41 @@ class SiteLayerCreator(QMainWindow):
         lbl_multi_wid.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.input_multi_width = QLineEdit("60")
 
-        grid.addWidget(lbl_multi_len, 2, 0)
-        grid.addWidget(self.input_multi_length, 2, 1)
-        grid.addWidget(lbl_multi_wid, 2, 2)
-        grid.addWidget(self.input_multi_width, 2, 3)
+        grid.addWidget(lbl_multi_len, 3, 0)
+        grid.addWidget(self.input_multi_length, 3, 1)
+        grid.addWidget(lbl_multi_wid, 3, 2)
+        grid.addWidget(self.input_multi_width, 3, 3)
 
-        # 4. Output KML File Name
         lbl_out_name = QLabel("Output File Name")
         self.input_multi_outname = QLineEdit("imported_multi_sites.kml")
 
-        grid.addWidget(lbl_out_name, 3, 0)
-        grid.addWidget(self.input_multi_outname, 3, 1, 1, 3)
+        grid.addWidget(lbl_out_name, 4, 0)
+        grid.addWidget(self.input_multi_outname, 4, 1, 1, 3)
 
         layout.addLayout(grid)
 
-        # Layer Output Type Radio Group for Multi Sites
+        # Multi-Site Band Mode Option
+        multi_band_frame = QFrame()
+        multi_band_frame.setObjectName("RadioGroupFrame")
+        mb_layout = QHBoxLayout(multi_band_frame)
+        mb_layout.setContentsMargins(15, 8, 15, 8)
+
+        self.chk_multi_use_bands = QCheckBox("Apply Customized Band Layers (700 / 1800 / 2600 / C-Band) to Imported Sites")
+        self.chk_multi_use_bands.setChecked(True)
+        mb_layout.addWidget(self.chk_multi_use_bands)
+
+        btn_mb_cfg = QPushButton("Band & Border Settings...")
+        btn_mb_cfg.setObjectName("BrowseBtn")
+        btn_mb_cfg.clicked.connect(self.open_band_sector_dialog)
+        mb_layout.addStretch(1)
+        mb_layout.addWidget(btn_mb_cfg)
+
+        layout.addWidget(multi_band_frame)
+
         radio_frame = QFrame()
         radio_frame.setObjectName("RadioGroupFrame")
         radio_layout = QHBoxLayout(radio_frame)
-        radio_layout.setContentsMargins(15, 10, 15, 10)
+        radio_layout.setContentsMargins(15, 8, 15, 8)
 
         self.lbl_multi_type = QLabel("Layer Output Type:")
         radio_layout.addWidget(self.lbl_multi_type)
@@ -900,7 +1581,6 @@ class SiteLayerCreator(QMainWindow):
         layout.addWidget(radio_frame)
         layout.addStretch(1)
 
-        # Action Buttons
         btn_row = QHBoxLayout()
         btn_multi_create = QPushButton("Create Multi-Sites Layer")
         btn_multi_create.setObjectName("CreateOnlyBtn")
@@ -921,9 +1601,6 @@ class SiteLayerCreator(QMainWindow):
 
         return page
 
-    # ==========================================
-    # Mode & Theme Helpers
-    # ==========================================
     def switch_mode(self, index):
         self.stacked_modes.setCurrentIndex(index)
         self.btn_mode_one.setChecked(index == 0)
@@ -966,6 +1643,8 @@ class SiteLayerCreator(QMainWindow):
         self.history_dialog.setStyleSheet(style)
         self.how_to_use_dialog.setStyleSheet(style)
         self.map_viewer_dialog.setStyleSheet(style)
+        self.custom_template_dialog.setStyleSheet(style)
+        self.band_sector_dialog.setStyleSheet(style)
 
         top_color = "#ffffff" if self.dark_mode else "#1e293b"
         bottom_color = "#a9d3a5" if self.dark_mode else "#2e7d32"
@@ -977,7 +1656,7 @@ class SiteLayerCreator(QMainWindow):
             f"<span style='color:{bottom_color};'>CREATOR</span>"
             f"</div>"
         )
-        self.lbl_app_choice.setStyleSheet(accent_style)
+        self.lbl_viewer.setStyleSheet(accent_style)
         self.lbl_one_type.setStyleSheet(accent_style)
         self.lbl_multi_type.setStyleSheet(accent_style)
 
@@ -990,32 +1669,44 @@ class SiteLayerCreator(QMainWindow):
                     font-family: Arial, sans-serif;
                     font-size: 14px;
                 }
-                QFrame#ModeBox {
-                    background-color: #252525;
-                    border: 1px solid #3c3f41;
-                    border-radius: 6px;
-                }
-                QFrame#RadioGroupFrame {
-                    background-color: #323232;
+                QTabWidget::pane {
                     border: 1px solid #444;
-                    border-radius: 4px;
+                    background: #232323;
+                }
+                QTabBar::tab {
+                    background: #3c3f41;
+                    color: #ccc;
+                    padding: 8px 14px;
+                    border: 1px solid #555;
+                }
+                QTabBar::tab:selected {
+                    background: #005a9e;
+                    color: #fff;
+                    font-weight: bold;
                 }
                 QMenuBar {
                     background-color: #1e1e1e;
                     color: #ffffff;
+                    border-bottom: 1px solid #3c3f41;
                 }
-                QMenuBar::item:selected {
-                    background-color: #3c3f41;
-                }
+                QMenuBar::item:selected { background-color: #3c3f41; }
                 QMenu {
                     background-color: #2b2b2b;
                     color: #ffffff;
                     border: 1px solid #555;
                 }
-                QMenu::item:selected {
-                    background-color: #005a9e;
+                QMenu::item:selected { background-color: #005a9e; }
+                QFrame#ModeBox {
+                    background-color: #232323;
+                    border: 1px solid #3c3f41;
+                    border-radius: 6px;
                 }
-                QLineEdit, QComboBox {
+                QFrame#RadioGroupFrame {
+                    background-color: #323232;
+                    border: 1px solid #484848;
+                    border-radius: 5px;
+                }
+                QLineEdit, QComboBox, QSpinBox {
                     background-color: #3c3f41;
                     border: 1px solid #555;
                     border-radius: 4px;
@@ -1023,32 +1714,22 @@ class SiteLayerCreator(QMainWindow):
                     color: white;
                 }
                 QLineEdit:disabled {
-                    background-color: #2b2b2b;
+                    background-color: #262626;
                     color: #666;
-                    border: 1px solid #3c3f41;
+                    border: 1px solid #3a3a3a;
                 }
-                QComboBox QAbstractItemView {
-                    background-color: #2b2b2b;
-                    color: white;
-                    selection-background-color: #005a9e;
-                }
-                QLineEdit:focus {
-                    border: 1px solid #77aa77;
-                }
+                QLineEdit:focus, QComboBox:focus, QSpinBox:focus { border: 1px solid #77aa77; }
                 QListWidget {
                     background-color: #3c3f41;
                     border: 1px solid #555;
                     border-radius: 4px;
                     outline: none;
-                    color: white;
                 }
                 QListWidget::item {
                     padding: 10px;
                     border-bottom: 1px solid #4a4d4f;
                 }
-                QListWidget::item:hover {
-                    background-color: #4a4d4f;
-                }
+                QListWidget::item:hover { background-color: #4a4d4f; }
                 QListWidget::item:selected {
                     background-color: #008000;
                     color: white;
@@ -1057,19 +1738,16 @@ class SiteLayerCreator(QMainWindow):
                 QPushButton#ModeTabBtn {
                     background-color: #3c3f41;
                     color: #bbbbbb;
-                    font-weight: bold;
-                    font-size: 15px;
                     border: 1px solid #555;
-                    border-radius: 6px;
-                    padding: 12px;
+                    border-radius: 5px;
+                    padding: 11px;
+                    font-weight: bold;
+                    font-size: 14px;
                 }
                 QPushButton#ModeTabBtn:checked {
                     background-color: #005a9e;
                     color: #ffffff;
                     border: 1px solid #4da3ff;
-                }
-                QPushButton#ModeTabBtn:hover:!checked {
-                    background-color: #4a4d4f;
                 }
                 QPushButton#CreateOnlyBtn {
                     background-color: #2e7d32;
@@ -1079,9 +1757,7 @@ class SiteLayerCreator(QMainWindow):
                     border-radius: 4px;
                     padding: 12px;
                 }
-                QPushButton#CreateOnlyBtn:hover {
-                    background-color: #388e3c;
-                }
+                QPushButton#CreateOnlyBtn:hover { background-color: #388e3c; }
                 QPushButton#CreateOpenBtn {
                     background-color: #008000;
                     color: white;
@@ -1090,20 +1766,16 @@ class SiteLayerCreator(QMainWindow):
                     border-radius: 4px;
                     padding: 12px;
                 }
-                QPushButton#CreateOpenBtn:hover {
-                    background-color: #009900;
-                }
+                QPushButton#CreateOpenBtn:hover { background-color: #009900; }
                 QPushButton#ViewMapBtn {
-                    background-color: #6b21a8;
+                    background-color: #6a1b9a;
                     color: white;
                     font-weight: bold;
                     border: none;
                     border-radius: 4px;
-                    padding: 12px;
+                    padding: 11px;
                 }
-                QPushButton#ViewMapBtn:hover {
-                    background-color: #7e22ce;
-                }
+                QPushButton#ViewMapBtn:hover { background-color: #8e24aa; }
                 QPushButton#SaveBtn {
                     background-color: #005a9e;
                     color: white;
@@ -1112,42 +1784,34 @@ class SiteLayerCreator(QMainWindow):
                     border-radius: 4px;
                     padding: 11px;
                 }
-                QPushButton#SaveBtn:hover {
-                    background-color: #0078d4;
-                }
+                QPushButton#SaveBtn:hover { background-color: #0078d4; }
                 QPushButton#ImportBtn {
                     background-color: #d83b01;
                     color: white;
                     font-weight: bold;
                     border: none;
                     border-radius: 4px;
-                    padding: 11px;
+                    padding: 10px;
                 }
-                QPushButton#ImportBtn:hover {
-                    background-color: #ea4a1f;
-                }
+                QPushButton#ImportBtn:hover { background-color: #ea4a1f; }
                 QPushButton#BrowseBtn {
                     background-color: #555555;
                     color: white;
                     border: none;
                     border-radius: 4px;
-                    padding: 6px 14px;
+                    padding: 6px 12px;
                 }
-                QPushButton#BrowseBtn:hover {
-                    background-color: #666666;
-                }
+                QPushButton#BrowseBtn:hover { background-color: #666666; }
                 QPushButton#RemoveBtn {
                     background-color: #9e6a00;
                     color: white;
                     font-weight: bold;
                     border: none;
                     border-radius: 4px;
-                    padding: 10px;
+                    padding: 9px;
                 }
-                QPushButton#RemoveBtn:hover {
-                    background-color: #c08000;
-                }
-                QRadioButton {
+                QPushButton#RemoveBtn:hover { background-color: #c08000; }
+                QRadioButton, QCheckBox {
                     spacing: 8px;
                     font-weight: bold;
                 }
@@ -1160,33 +1824,32 @@ class SiteLayerCreator(QMainWindow):
                     font-family: Arial, sans-serif;
                     font-size: 14px;
                 }
-                QFrame#ModeBox {
-                    background-color: #ffffff;
-                    border: 1px solid #cbd5e1;
-                    border-radius: 6px;
-                }
-                QFrame#RadioGroupFrame {
-                    background-color: #e2e8f0;
-                    border: 1px solid #cbd5e1;
-                    border-radius: 4px;
-                }
                 QMenuBar {
                     background-color: #e2e8f0;
                     color: #1e293b;
+                    border-bottom: 1px solid #cbd5e1;
                 }
-                QMenuBar::item:selected {
-                    background-color: #cbd5e1;
-                }
+                QMenuBar::item:selected { background-color: #cbd5e1; }
                 QMenu {
                     background-color: #ffffff;
                     color: #1e293b;
                     border: 1px solid #cbd5e1;
                 }
                 QMenu::item:selected {
-                    background-color: #005a9e;
+                    background-color: #0284c7;
                     color: #ffffff;
                 }
-                QLineEdit, QComboBox {
+                QFrame#ModeBox {
+                    background-color: #ffffff;
+                    border: 1px solid #cbd5e1;
+                    border-radius: 6px;
+                }
+                QFrame#RadioGroupFrame {
+                    background-color: #f1f5f9;
+                    border: 1px solid #cbd5e1;
+                    border-radius: 5px;
+                }
+                QLineEdit, QComboBox, QSpinBox {
                     background-color: #ffffff;
                     border: 1px solid #94a3b8;
                     border-radius: 4px;
@@ -1196,52 +1859,33 @@ class SiteLayerCreator(QMainWindow):
                 QLineEdit:disabled {
                     background-color: #e2e8f0;
                     color: #94a3b8;
-                    border: 1px solid #cbd5e1;
-                }
-                QComboBox QAbstractItemView {
-                    background-color: #ffffff;
-                    color: #1e293b;
-                    selection-background-color: #005a9e;
-                    selection-color: #ffffff;
-                }
-                QLineEdit:focus {
-                    border: 1px solid #2e7d32;
                 }
                 QListWidget {
                     background-color: #ffffff;
                     border: 1px solid #94a3b8;
                     border-radius: 4px;
-                    outline: none;
-                    color: #1e293b;
                 }
                 QListWidget::item {
                     padding: 10px;
                     border-bottom: 1px solid #e2e8f0;
                 }
-                QListWidget::item:hover {
-                    background-color: #f1f5f9;
-                }
                 QListWidget::item:selected {
-                    background-color: #2e7d32;
+                    background-color: #16a34a;
                     color: white;
                     font-weight: bold;
                 }
                 QPushButton#ModeTabBtn {
                     background-color: #e2e8f0;
                     color: #475569;
-                    font-weight: bold;
-                    font-size: 15px;
                     border: 1px solid #cbd5e1;
-                    border-radius: 6px;
-                    padding: 12px;
+                    border-radius: 5px;
+                    padding: 11px;
+                    font-weight: bold;
                 }
                 QPushButton#ModeTabBtn:checked {
-                    background-color: #005a9e;
+                    background-color: #0284c7;
                     color: #ffffff;
-                    border: 1px solid #004070;
-                }
-                QPushButton#ModeTabBtn:hover:!checked {
-                    background-color: #cbd5e1;
+                    border: 1px solid #0369a1;
                 }
                 QPushButton#CreateOnlyBtn {
                     background-color: #2e7d32;
@@ -1251,9 +1895,6 @@ class SiteLayerCreator(QMainWindow):
                     border-radius: 4px;
                     padding: 12px;
                 }
-                QPushButton#CreateOnlyBtn:hover {
-                    background-color: #388e3c;
-                }
                 QPushButton#CreateOpenBtn {
                     background-color: #15803d;
                     color: white;
@@ -1262,51 +1903,36 @@ class SiteLayerCreator(QMainWindow):
                     border-radius: 4px;
                     padding: 12px;
                 }
-                QPushButton#CreateOpenBtn:hover {
-                    background-color: #16a34a;
-                }
                 QPushButton#ViewMapBtn {
-                    background-color: #6b21a8;
+                    background-color: #7b1fa2;
                     color: white;
                     font-weight: bold;
                     border: none;
                     border-radius: 4px;
-                    padding: 12px;
-                }
-                QPushButton#ViewMapBtn:hover {
-                    background-color: #7e22ce;
+                    padding: 11px;
                 }
                 QPushButton#SaveBtn {
-                    background-color: #005a9e;
+                    background-color: #0284c7;
                     color: white;
                     font-weight: bold;
                     border: none;
                     border-radius: 4px;
                     padding: 11px;
-                }
-                QPushButton#SaveBtn:hover {
-                    background-color: #0078d4;
                 }
                 QPushButton#ImportBtn {
-                    background-color: #d83b01;
+                    background-color: #ea580c;
                     color: white;
                     font-weight: bold;
                     border: none;
                     border-radius: 4px;
-                    padding: 11px;
-                }
-                QPushButton#ImportBtn:hover {
-                    background-color: #ea4a1f;
+                    padding: 10px;
                 }
                 QPushButton#BrowseBtn {
                     background-color: #64748b;
                     color: white;
                     border: none;
                     border-radius: 4px;
-                    padding: 6px 14px;
-                }
-                QPushButton#BrowseBtn:hover {
-                    background-color: #475569;
+                    padding: 6px 12px;
                 }
                 QPushButton#RemoveBtn {
                     background-color: #b45309;
@@ -1314,20 +1940,14 @@ class SiteLayerCreator(QMainWindow):
                     font-weight: bold;
                     border: none;
                     border-radius: 4px;
-                    padding: 10px;
+                    padding: 9px;
                 }
-                QPushButton#RemoveBtn:hover {
-                    background-color: #d97706;
-                }
-                QRadioButton {
+                QRadioButton, QCheckBox {
                     spacing: 8px;
                     font-weight: bold;
                 }
             """
 
-    # ==========================================
-    # File & Help Dialog Actions
-    # ==========================================
     def browse_output_directory(self):
         folder = QFileDialog.getExistingDirectory(self, "Select Output Directory")
         if folder:
@@ -1340,30 +1960,42 @@ class SiteLayerCreator(QMainWindow):
         if file_path:
             self.input_csv_path.setText(file_path)
 
-    def export_template_csv(self):
-        file_path, _ = QFileDialog.getSaveFileName(self, "Save CSV Template", "site_template.csv", "CSV Files (*.csv)")
-        if not file_path:
-            return
-        try:
-            with open(file_path, 'w', newline='', encoding='utf-8-sig') as f:
-                writer = csv.writer(f)
-                writer.writerow(["site name", "option", "lat", "long", "az-a", "az-b", "az-c", "az-d", "line length"])
-            QMessageBox.information(self, "Success", "CSV Template exported successfully!")
-        except Exception as e:
-            QMessageBox.critical(self, "Export Error", str(e))
+    def save_template_file(self, columns_list, default_name, is_excel=False):
+        if is_excel:
+            file_path, _ = QFileDialog.getSaveFileName(self, "Save Excel Template", default_name, "Excel Files (*.xlsx)")
+            if not file_path:
+                return
+            try:
+                if not file_path.lower().endswith(".xlsx"):
+                    file_path += ".xlsx"
+                write_simple_xlsx(file_path, [columns_list])
+                QMessageBox.information(self, "Success", f"Excel Template exported successfully with {len(columns_list)} columns!")
+            except Exception as e:
+                QMessageBox.critical(self, "Export Error", str(e))
+        else:
+            file_path, _ = QFileDialog.getSaveFileName(self, "Save CSV Template", default_name, "CSV Files (*.csv)")
+            if not file_path:
+                return
+            try:
+                if not file_path.lower().endswith(".csv"):
+                    file_path += ".csv"
+                with open(file_path, 'w', newline='', encoding='utf-8-sig') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(columns_list)
+                QMessageBox.information(self, "Success", f"CSV Template exported successfully with {len(columns_list)} columns!")
+            except Exception as e:
+                QMessageBox.critical(self, "Export Error", str(e))
 
-    def export_template_excel(self):
-        file_path, _ = QFileDialog.getSaveFileName(self, "Save Excel Template", "site_template.xlsx", "Excel Files (*.xlsx)")
-        if not file_path:
-            return
-        try:
-            if not file_path.lower().endswith(".xlsx"):
-                file_path += ".xlsx"
-            headers = [["site name", "option", "lat", "long", "az-a", "az-b", "az-c", "az-d", "line length"]]
-            write_simple_xlsx(file_path, headers)
-            QMessageBox.information(self, "Success", "Excel (.xlsx) Template exported successfully!")
-        except Exception as e:
-            QMessageBox.critical(self, "Export Error", str(e))
+    def export_simple_template_csv(self):
+        self.save_template_file(SIMPLE_TEMPLATE_COLS, "simple_site_template.csv", is_excel=False)
+
+    def export_simple_template_excel(self):
+        self.save_template_file(SIMPLE_TEMPLATE_COLS, "simple_site_template.xlsx", is_excel=True)
+
+    def open_custom_template_dialog(self):
+        self.custom_template_dialog.show()
+        self.custom_template_dialog.raise_()
+        self.custom_template_dialog.activateWindow()
 
     def show_how_to_use_dialog(self):
         self.how_to_use_dialog.show()
@@ -1374,8 +2006,8 @@ class SiteLayerCreator(QMainWindow):
         about_text = (
             "<h3>GIS Layer Creator</h3>"
             "<p>A specialized telecom & GIS design tool built to quickly generate "
-            "single-site and multi-site KML layers (Pins, Sector Polygons, and Azimuth Lines) "
-            "for Google Earth, QGIS, ArcGIS Earth, and an integrated 2D OpenStreetMap viewer.</p>"
+            "single-site and multi-site KML layers (Pins, Sector Polygons, Multi-Band Layers, and Azimuth Lines) "
+            "for Google Earth, QGIS, ArcGIS Earth, and an integrated 2D Satellite Map viewer.</p>"
             "<p><b>Developed by:</b> Ahmad</p>"
         )
         QMessageBox.information(self, "About App", about_text)
@@ -1394,9 +2026,6 @@ class SiteLayerCreator(QMainWindow):
         msg.setIcon(QMessageBox.Icon.Information)
         msg.exec()
 
-    # ==========================================
-    # History Management & Export
-    # ==========================================
     def show_history_popup(self):
         self.populate_history_list()
         self.history_dialog.show()
@@ -1460,8 +2089,8 @@ class SiteLayerCreator(QMainWindow):
 
         site_name = current_item.text()
         reply = QMessageBox.question(
-            self.history_dialog, 'Confirm', 
-            f"Are you sure you want to remove '{site_name}' from history?", 
+            self.history_dialog, 'Confirm',
+            f"Are you sure you want to remove '{site_name}' from history?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if reply == QMessageBox.StandardButton.Yes:
@@ -1473,7 +2102,7 @@ class SiteLayerCreator(QMainWindow):
 
     def clear_history(self):
         reply = QMessageBox.question(
-            self, 'Confirm', 'Are you sure you want to clear all history?', 
+            self, 'Confirm', 'Are you sure you want to clear all history?',
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if reply == QMessageBox.StandardButton.Yes:
@@ -1533,7 +2162,7 @@ class SiteLayerCreator(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Export Error", str(e))
 
-    def add_site_to_history(self, site_name, option_name, coord_text, length, width, layer_mode, sectors_data):
+    def add_site_to_history(self, site_name, option_name, coord_text, length, width, layer_mode, sectors_data, extra_data=None):
         self.history_data[site_name] = {
             "site_name": site_name,
             "option_name": option_name,
@@ -1541,7 +2170,8 @@ class SiteLayerCreator(QMainWindow):
             "length": str(length),
             "width": str(width),
             "layer_mode": layer_mode,
-            "sectors": sectors_data
+            "sectors": sectors_data,
+            "extra_data": extra_data or {}
         }
 
     def save_to_history(self, show_message=True):
@@ -1566,7 +2196,7 @@ class SiteLayerCreator(QMainWindow):
             sectors_data = [{"azimuth": self.az_inputs[i].text().strip()} for i in range(4)]
 
             self.add_site_to_history(
-                site_name, option_name, coord_text, 
+                site_name, option_name, coord_text,
                 length_val, width_val, layer_mode, sectors_data
             )
 
@@ -1577,60 +2207,294 @@ class SiteLayerCreator(QMainWindow):
                 QMessageBox.information(self, "Saved", f"Site '{site_name}' saved to history successfully.")
 
         except Exception as e:
-            if show_message:
-                QMessageBox.critical(self, "Save Error", str(e))
-            else:
-                raise e
+            QMessageBox.critical(self, "Save Error", str(e))
 
-    # ==========================================
-    # KML & 2D Map Geometry Builders
-    # ==========================================
     def calculate_destination(self, lat, lon, bearing, distance):
-        R = 6371000
+        R = 6371000.0
         lat1 = math.radians(lat)
         lon1 = math.radians(lon)
-        bearing = math.radians(bearing)
+        bearing_rad = math.radians(bearing)
 
         lat2 = math.asin(
-            math.sin(lat1) * math.cos(distance / R) + 
-            math.cos(lat1) * math.sin(distance / R) * math.cos(bearing)
+            math.sin(lat1) * math.cos(distance / R) +
+            math.cos(lat1) * math.sin(distance / R) * math.cos(bearing_rad)
         )
         lon2 = lon1 + math.atan2(
-            math.sin(bearing) * math.sin(distance / R) * math.cos(lat1),
+            math.sin(bearing_rad) * math.sin(distance / R) * math.cos(lat1),
             math.cos(distance / R) - math.sin(lat1) * math.sin(lat2)
         )
-
         return math.degrees(lat2), math.degrees(lon2)
 
-    def build_site_map_feature(self, site_name, option_name, lat, lon, length, azims, layer_mode, sector_width):
+    def match_band_name(self, raw_band_str):
+        if not raw_band_str:
+            return None
+        s = str(raw_band_str).strip().lower()
+        if "700" in s:
+            return "Band 700"
+        if "1800" in s:
+            return "Band 1800"
+        if "2600" in s:
+            return "Band 2600"
+        if "c-band" in s or "cband" in s or "3500" in s or s == "c":
+            return "C-Band"
+        return None
+
+    def get_active_bands_for_site(self, use_bands_flag, specific_band_str=None):
+        bands_cfg = self.band_sector_settings.get("bands", DEFAULT_BAND_SECTOR_SETTINGS["bands"])
+        matched = self.match_band_name(specific_band_str)
+        if matched and matched in bands_cfg:
+            b = bands_cfg[matched]
+            return [{
+                "band_name": matched,
+                "length": float(b["length"]),
+                "width": float(b["width"]),
+                "transparency": int(b["transparency"]),
+                "color": b["color"]
+            }]
+
+        if use_bands_flag:
+            active_list = []
+            for b_name in ["Band 700", "Band 1800", "Band 2600", "C-Band"]:
+                b = bands_cfg.get(b_name, {})
+                if b.get("enabled", False):
+                    active_list.append({
+                        "band_name": b_name,
+                        "length": float(b.get("length", 140.0)),
+                        "width": float(b.get("width", 60.0)),
+                        "transparency": int(b.get("transparency", 50)),
+                        "color": b.get("color", "#00e5ff")
+                    })
+            active_list.sort(key=lambda x: x["length"], reverse=True)
+            return active_list
+        return []
+
+    def get_sector_parameters(self, sector_idx, default_length, default_width, band_override=None):
+        s_key = f"S{sector_idx + 1}"
+        sec_cfg = self.band_sector_settings.get("sectors", {}).get(s_key, {})
+
+        if band_override:
+            length = band_override["length"]
+            width = band_override["width"]
+            trans = band_override["transparency"]
+            color = band_override["color"]
+            if sec_cfg.get("use_custom", False):
+                length = float(sec_cfg.get("length", length))
+                width = float(sec_cfg.get("width", width))
+            return length, width, trans, color, f"{band_override['band_name']} - {s_key}"
+
+        if sec_cfg.get("use_custom", False):
+            return (
+                float(sec_cfg.get("length", default_length)),
+                float(sec_cfg.get("width", default_width)),
+                int(sec_cfg.get("transparency", 50)),
+                sec_cfg.get("color", "#00e5ff"),
+                s_key
+            )
+
+        fallback_colors = ["#00e5ff", "#ffeb3b", "#ff5252", "#69f0ae"]
+        return (
+            default_length,
+            default_width,
+            50,
+            fallback_colors[sector_idx % len(fallback_colors)],
+            s_key
+        )
+
+    def filter_extra_data_for_sector(self, extra_data, sector_idx=None):
+        """
+        Filters extra_data so that when clicking Sector N (1..4), only Sector N's
+        specific attributes (e.g., antenna height s1, rs power s1, pci s1, mod s1, comment s1)
+        and general site attributes are displayed.
+        """
+        if not extra_data:
+            return {}
+        if sector_idx is None:
+            return extra_data
+
+        target_s = f"s{sector_idx + 1}"
+        other_sectors = {f"s{j}" for j in range(1, 5) if j != (sector_idx + 1)}
+
+        filtered = {}
+        for k, v in extra_data.items():
+            k_low = k.strip().lower()
+            tokens = k_low.replace("_", " ").replace("-", " ").split()
+            if any(os_tok in tokens for os_tok in other_sectors):
+                continue
+            filtered[k] = v
+        return filtered
+
+    def build_kml_description_html(self, site_name, option_name, lat, lon, length, sector_width, band_name="", extra_data=None, sector_idx=None):
+        rows_html = f"""
+        <tr><td style='font-weight:bold; background:#f0f0f0; padding:4px;'>Site Name</td><td style='padding:4px;'>{escape(str(site_name))}</td></tr>
+        <tr><td style='font-weight:bold; background:#f0f0f0; padding:4px;'>Coordinates</td><td style='padding:4px;'>{lat}, {lon}</td></tr>
+        """
+        if option_name:
+            rows_html += f"<tr><td style='font-weight:bold; background:#f0f0f0; padding:4px;'>Option</td><td style='padding:4px;'>{escape(str(option_name))}</td></tr>"
+        if band_name:
+            rows_html += f"<tr><td style='font-weight:bold; background:#f0f0f0; padding:4px;'>Band Layer</td><td style='padding:4px;'>{escape(str(band_name))}</td></tr>"
+        if sector_idx is not None:
+            rows_html += f"<tr><td style='font-weight:bold; background:#f0f0f0; padding:4px;'>Sector</td><td style='padding:4px;'>S{sector_idx + 1}</td></tr>"
+        rows_html += f"<tr><td style='font-weight:bold; background:#f0f0f0; padding:4px;'>Length / Width</td><td style='padding:4px;'>{length}m / {sector_width}°</td></tr>"
+
+        filtered_extra = self.filter_extra_data_for_sector(extra_data, sector_idx)
+        for k, v in filtered_extra.items():
+            rows_html += f"<tr><td style='font-weight:bold; background:#f0f0f0; padding:4px;'>{escape(str(k))}</td><td style='padding:4px;'>{escape(str(v))}</td></tr>"
+
+        return f"<table border='1' style='border-collapse:collapse; font-family:Arial; font-size:12px;'>{rows_html}</table>"
+
+    def generate_site_kml(self, fol, site_name, option_name, lat, lon, height, length, azims, layer_mode, sector_width, extra_data=None, use_bands=False):
+        border_cfg = self.band_sector_settings.get("border", DEFAULT_BAND_SECTOR_SETTINGS["border"])
+        border_enabled = bool(border_cfg.get("enabled", True))
+        border_hex = border_cfg.get("color", "#ffffff")
+        kml_outline_color = hex_and_transparency_to_kml_color(border_hex, 0)
+
+        specific_band = None
+        if extra_data:
+            for k, v in extra_data.items():
+                if k.strip().lower() in ("band", "frequency", "freq"):
+                    specific_band = v
+                    break
+
+        active_bands = self.get_active_bands_for_site(use_bands, specific_band)
+        band_targets = active_bands if active_bands else [None]
+
+        for b_cfg in band_targets:
+            target_fol = fol.newfolder(name=b_cfg["band_name"]) if b_cfg else fol
+            b_label = b_cfg["band_name"] if b_cfg else ""
+
+            if layer_mode in ("sector", "both"):
+                for i in range(4):
+                    az_text = str(azims[i]).strip() if i < len(azims) and azims[i] is not None else ""
+                    if not az_text or az_text in ["-", " "]:
+                        continue
+                    try:
+                        azimuth = float(az_text)
+                    except ValueError:
+                        continue
+
+                    s_len, s_wid, s_trans, s_col, s_prefix = self.get_sector_parameters(i, length, sector_width, b_cfg)
+                    desc_html = self.build_kml_description_html(
+                        site_name, option_name, lat, lon, s_len, s_wid, b_label, extra_data, sector_idx=i
+                    )
+
+                    pol = target_fol.newpolygon(name=f"{s_prefix} Az:{azimuth:g}")
+                    pol.description = desc_html
+                    start_bearing = azimuth - (s_wid / 2.0)
+
+                    arc_coords = []
+                    steps = max(int(s_wid / 5) + 1, 2)
+                    bearing_step = s_wid / (steps - 1)
+
+                    for step in range(steps):
+                        current_bearing = start_bearing + (step * bearing_step)
+                        dest_lat, dest_lon = self.calculate_destination(lat, lon, current_bearing, s_len)
+                        arc_coords.append((dest_lon, dest_lat, height))
+
+                    pol.outerboundaryis = [(lon, lat, height)] + arc_coords + [(lon, lat, height)]
+                    pol.style.polystyle.color = hex_and_transparency_to_kml_color(s_col, s_trans)
+                    pol.style.polystyle.fill = 1
+                    pol.style.polystyle.outline = 1 if border_enabled else 0
+                    if border_enabled:
+                        pol.style.linestyle.color = kml_outline_color
+                        pol.style.linestyle.width = 2
+
+            elif layer_mode == "lines":
+                for i in range(4):
+                    az_text = str(azims[i]).strip() if i < len(azims) and azims[i] is not None else ""
+                    if not az_text or az_text in ["-", " "]:
+                        continue
+                    try:
+                        azimuth = float(az_text)
+                    except ValueError:
+                        continue
+
+                    s_len, s_wid, s_trans, s_col, s_prefix = self.get_sector_parameters(i, length, sector_width, b_cfg)
+                    desc_html = self.build_kml_description_html(
+                        site_name, option_name, lat, lon, s_len, s_wid, b_label, extra_data, sector_idx=i
+                    )
+
+                    end_lat, end_lon = self.calculate_destination(lat, lon, azimuth, s_len)
+                    lin = target_fol.newlinestring(name=f"{s_prefix} Az:{azimuth:g}")
+                    lin.description = desc_html
+                    lin.coords = [(lon, lat, height), (end_lon, end_lat, height)]
+                    lin.style.linestyle.color = hex_and_transparency_to_kml_color(s_col, 0)
+                    lin.style.linestyle.width = 3
+
+        if layer_mode in ("pin", "both", "lines"):
+            point_label = f"{site_name} - {option_name}" if option_name else site_name
+            desc_html = self.build_kml_description_html(
+                site_name, option_name, lat, lon, length, sector_width, "", extra_data, sector_idx=None
+            )
+            pnt = fol.newpoint(name=point_label)
+            pnt.description = desc_html
+            pnt.coords = [(lon, lat, height)]
+            pnt.style.iconstyle.scale = 1.0
+            pnt.style.labelstyle.scale = 1.0
+            pnt.style.labelstyle.color = simplekml.Color.white
+
+    def build_site_map_feature(self, site_name, option_name, lat, lon, length, azims, layer_mode, sector_width, extra_data=None, use_bands=False):
         polygons = []
         lines = []
 
-        for i in range(4):
-            az_text = str(azims[i]).strip() if i < len(azims) and azims[i] is not None else ""
-            if not az_text or az_text in ["-", " "]:
-                continue
-            try:
-                azimuth = float(az_text)
-            except Exception:
-                continue
+        border_cfg = self.band_sector_settings.get("border", DEFAULT_BAND_SECTOR_SETTINGS["border"])
+        border_enabled = bool(border_cfg.get("enabled", True))
+        border_hex = border_cfg.get("color", "#ffffff")
 
-            if layer_mode in ["sector", "both"]:
-                start_bearing = azimuth - (sector_width / 2)
-                steps = max(int(sector_width / 5) + 1, 2)
-                bearing_step = sector_width / (steps - 1) if steps > 1 else 0
+        specific_band = None
+        if extra_data:
+            for k, v in extra_data.items():
+                if k.strip().lower() in ("band", "frequency", "freq"):
+                    specific_band = v
+                    break
 
-                ring = [[lat, lon]]
-                for step in range(steps):
-                    current_bearing = start_bearing + (step * bearing_step)
-                    d_lat, d_lon = self.calculate_destination(lat, lon, current_bearing, length)
-                    ring.append([d_lat, d_lon])
-                ring.append([lat, lon])
-                polygons.append({"name": f"S{i+1} Az:{azimuth}°", "coords": ring})
+        active_bands = self.get_active_bands_for_site(use_bands, specific_band)
+        band_targets = active_bands if active_bands else [None]
 
-            elif layer_mode == "lines":
-                end_lat, end_lon = self.calculate_destination(lat, lon, azimuth, length)
-                lines.append({"name": f"S{i+1} Az:{azimuth}°", "coords": [[lat, lon], [end_lat, end_lon]]})
+        for b_cfg in band_targets:
+            for i in range(4):
+                az_text = str(azims[i]).strip() if i < len(azims) and azims[i] is not None else ""
+                if not az_text or az_text in ["-", " "]:
+                    continue
+                try:
+                    azimuth = float(az_text)
+                except ValueError:
+                    continue
+
+                s_len, s_wid, s_trans, s_col, s_prefix = self.get_sector_parameters(i, length, sector_width, b_cfg)
+                opacity_float = max(0.05, min(1.0, (100 - s_trans) / 100.0))
+                sector_extra = self.filter_extra_data_for_sector(extra_data, sector_idx=i)
+
+                if layer_mode in ("sector", "both"):
+                    start_bearing = azimuth - (s_wid / 2.0)
+                    steps = max(int(s_wid / 5) + 1, 2)
+                    bearing_step = s_wid / (steps - 1)
+                    poly_coords = [[lat, lon]]
+                    for step in range(steps):
+                        current_bearing = start_bearing + (step * bearing_step)
+                        dest_lat, dest_lon = self.calculate_destination(lat, lon, current_bearing, s_len)
+                        poly_coords.append([dest_lat, dest_lon])
+                    poly_coords.append([lat, lon])
+                    polygons.append({
+                        "name": f"{s_prefix} (Azimuth: {azimuth:g}°)",
+                        "coords": poly_coords,
+                        "color": s_col,
+                        "opacity": opacity_float,
+                        "border_enabled": border_enabled,
+                        "border_color": border_hex,
+                        "length": s_len,
+                        "width": s_wid,
+                        "sector_extra": sector_extra
+                    })
+
+                if layer_mode == "lines":
+                    end_lat, end_lon = self.calculate_destination(lat, lon, azimuth, s_len)
+                    lines.append({
+                        "name": f"{s_prefix} (Azimuth: {azimuth:g}°)",
+                        "coords": [[lat, lon], [end_lat, end_lon]],
+                        "color": s_col,
+                        "length": s_len,
+                        "sector_extra": sector_extra
+                    })
 
         return {
             "site_name": site_name,
@@ -1641,159 +2505,70 @@ class SiteLayerCreator(QMainWindow):
             "sector_width": sector_width,
             "layer_mode": layer_mode,
             "polygons": polygons,
-            "lines": lines
+            "lines": lines,
+            "extra_data": extra_data or {}
         }
 
-    def generate_site_kml(self, fol, site_name, option_name, lat, lon, height, length, azims, layer_mode, sector_width):
-        kml_outline_color = "ffffffff"
-
-        if layer_mode in ["sector", "both"]:
-            for i in range(4):
-                az_text = str(azims[i]).strip() if i < len(azims) and azims[i] is not None else ""
-                if not az_text or az_text in ["-", " "]:
-                    continue
-
-                try:
-                    azimuth = float(az_text)
-                except Exception:
-                    continue
-
-                pol = fol.newpolygon(name=f"S{i+1} Az:{azimuth}")
-                start_bearing = azimuth - (sector_width / 2)
-
-                arc_coords = []
-                steps = max(int(sector_width / 5) + 1, 2)
-                bearing_step = sector_width / (steps - 1) if steps > 1 else 0
-
-                for step in range(steps):
-                    current_bearing = start_bearing + (step * bearing_step)
-                    dest_lat, dest_lon = self.calculate_destination(lat, lon, current_bearing, length)
-                    arc_coords.append((dest_lon, dest_lat, height))
-
-                pol.outerboundaryis = [(lon, lat, height)] + arc_coords + [(lon, lat, height)]
-                pol.style.polystyle.color = "4Dffffff"
-                pol.style.polystyle.fill = 1
-                pol.style.polystyle.outline = 1
-                pol.style.linestyle.color = kml_outline_color
-                pol.style.linestyle.width = 3
-
-        elif layer_mode == "lines":
-            for i in range(4):
-                az_text = str(azims[i]).strip() if i < len(azims) and azims[i] is not None else ""
-                if not az_text or az_text in ["-", " "]:
-                    continue
-
-                try:
-                    azimuth = float(az_text)
-                except Exception:
-                    continue
-
-                end_lat, end_lon = self.calculate_destination(lat, lon, azimuth, length)
-                lin = fol.newlinestring(name=f"S{i+1} Az:{azimuth}")
-                lin.coords = [(lon, lat, height), (end_lon, end_lat, height)]
-                lin.style.linestyle.color = kml_outline_color
-                lin.style.linestyle.width = 3
-
-        if layer_mode in ["pin", "both", "lines"]:
-            point_label = f"{site_name} - {option_name}" if option_name else site_name
-            pnt = fol.newpoint(name=point_label)
-            pnt.coords = [(lon, lat, height)]
-            pnt.style.iconstyle.scale = 1.0 
-            pnt.style.labelstyle.scale = 1.0
-            pnt.style.labelstyle.color = simplekml.Color.white
-
     def get_output_filepath(self, filename):
-        if not filename.lower().endswith(".kml"):
-            filename += ".kml"
         folder = self.input_output.text().strip()
         if folder and os.path.exists(folder):
-            return os.path.abspath(os.path.join(folder, filename))
+            return os.path.join(folder, filename)
         return os.path.abspath(filename)
 
     def open_kml_file(self, file_path):
-        app_choice = self.combo_app_choice.currentText()
         abs_path = os.path.abspath(file_path)
+        viewer = self.combo_viewer.currentText()
 
         try:
-            if app_choice == "Google Earth":
-                if sys.platform == 'win32':
+            if viewer == "Google Earth":
+                if sys.platform == "win32":
                     ge_paths = [
                         r"C:\Program Files\Google\Google Earth Pro\client\googleearth.exe",
-                        r"C:\Program Files (x86)\Google\Google Earth Pro\client\googleearth.exe",
-                        os.path.expandvars(r"%LOCALAPPDATA%\Google\Google Earth Pro\client\googleearth.exe")
+                        r"C:\Program Files (x86)\Google\Google Earth Pro\client\googleearth.exe"
                     ]
-                    opened = False
                     for gpath in ge_paths:
                         if os.path.exists(gpath):
                             subprocess.Popen([gpath, abs_path])
-                            opened = True
-                            break
-                    if not opened:
-                        os.startfile(abs_path)
-                elif sys.platform == 'darwin':
-                    os.system(f'open -a "Google Earth Pro" "{abs_path}"')
+                            return
+                    os.startfile(abs_path)
+                elif sys.platform == "darwin":
+                    subprocess.Popen(["open", "-a", "Google Earth Pro", abs_path])
                 else:
-                    os.system(f'google-earth-pro "{abs_path}" &')
+                    subprocess.Popen(["google-earth-pro", abs_path])
 
-            elif app_choice == "QGIS":
-                if sys.platform == 'win32':
+            elif viewer == "QGIS":
+                if sys.platform == "win32":
                     qgis_paths = [
                         r"C:\Program Files\QGIS 3.34.0\bin\qgis-bin.exe",
                         r"C:\Program Files\QGIS 3.28.0\bin\qgis-bin.exe",
                         r"C:\Program Files\QGIS 3.22.0\bin\qgis-bin.exe"
                     ]
-                    opened = False
                     for qpath in qgis_paths:
                         if os.path.exists(qpath):
                             subprocess.Popen([qpath, abs_path])
-                            opened = True
-                            break
-                    if not opened:
-                        try:
-                            subprocess.Popen(['qgis', abs_path], shell=True)
-                        except FileNotFoundError:
-                            os.startfile(abs_path)
-                elif sys.platform == 'darwin':
-                    os.system(f'open -a "QGIS" "{abs_path}"')
-                else:
-                    subprocess.Popen(['qgis', abs_path])
-
-            elif app_choice == "ArcGIS Earth":
-                if sys.platform == 'win32':
-                    arcgis_paths = [
-                        r"C:\Program Files\ArcGIS\ArcGIS Earth\bin\ArcGISEarth.exe",
-                        r"C:\Program Files (x86)\ArcGIS\ArcGIS Earth\bin\ArcGISEarth.exe",
-                        r"C:\Program Files\ArcGIS\Pro\bin\ArcGISPro.exe",
-                        os.path.expandvars(r"%LOCALAPPDATA%\Programs\ArcGIS\ArcGIS Earth\bin\ArcGISEarth.exe")
-                    ]
-                    opened = False
-                    for apath in arcgis_paths:
-                        if os.path.exists(apath):
-                            subprocess.Popen([apath, abs_path])
-                            opened = True
-                            break
-                    if not opened:
-                        try:
-                            subprocess.Popen(['ArcGISEarth', abs_path])
-                        except FileNotFoundError:
-                            os.startfile(abs_path)
-                elif sys.platform == 'darwin':
+                            return
                     os.startfile(abs_path)
                 else:
-                    os.system(f'xdg-open "{abs_path}"')
+                    subprocess.Popen(["qgis", abs_path])
 
-        except Exception:
-            QMessageBox.warning(
-                self, 
-                "Launch Warning", 
-                f"Could not open the KML file automatically with {app_choice}.\n"
-                f"Please make sure {app_choice} is installed or set a default .kml app in Windows.\n\n"
-                f"File saved at:\n{abs_path}"
-            )
+            elif viewer == "ArcGIS Earth":
+                if sys.platform == "win32":
+                    arc_paths = [
+                        r"C:\Program Files\ArcGIS\ArcGIS Earth\bin\ArcGISEarth.exe",
+                        r"C:\Program Files (x86)\ArcGIS\ArcGIS Earth\bin\ArcGISEarth.exe",
+                        r"C:\Program Files\ArcGIS\Pro\bin\ArcGISPro.exe"
+                    ]
+                    for apath in arc_paths:
+                        if os.path.exists(apath):
+                            subprocess.Popen([apath, abs_path])
+                            return
+                    os.startfile(abs_path)
+                else:
+                    subprocess.Popen(["arcgis", abs_path])
 
-    # ==========================================
-    # Action Handlers: Create KML & View in 2D Map
-    # ==========================================
+        except Exception as e:
+            QMessageBox.warning(self, "Viewer Launch Warning", f"Saved KML, but could not launch {viewer}:\n{str(e)}")
+
     def create_single_kml(self, open_file=False):
         try:
             self.save_to_history(show_message=False)
@@ -1808,6 +2583,7 @@ class SiteLayerCreator(QMainWindow):
             length = float(self.input_length.text().strip()) if self.input_length.text().strip() else 120.0
             sector_width = float(self.input_width.text().strip()) if self.input_width.text().strip() else 60.0
             layer_mode = self.get_one_site_layer_mode()
+            use_bands = self.chk_use_band_layers.isChecked()
 
             kml = simplekml.Kml()
             fol_name = f"{site_name} {option_name}".strip()
@@ -1816,8 +2592,9 @@ class SiteLayerCreator(QMainWindow):
             azims = [inp.text().strip() for inp in self.az_inputs]
 
             self.generate_site_kml(
-                fol, site_name, option_name, lat, lon, 0.0, 
-                length, azims, layer_mode, sector_width
+                fol, site_name, option_name, lat, lon, 0.0,
+                length, azims, layer_mode, sector_width,
+                extra_data=None, use_bands=use_bands
             )
 
             output_filename = self.get_output_filepath(f"{site_name}_design.kml")
@@ -1845,10 +2622,12 @@ class SiteLayerCreator(QMainWindow):
             length = float(self.input_length.text().strip()) if self.input_length.text().strip() else 120.0
             sector_width = float(self.input_width.text().strip()) if self.input_width.text().strip() else 60.0
             layer_mode = self.get_one_site_layer_mode()
+            use_bands = self.chk_use_band_layers.isChecked()
             azims = [inp.text().strip() for inp in self.az_inputs]
 
             site_feature = self.build_site_map_feature(
-                site_name, option_name, lat, lon, length, azims, layer_mode, sector_width
+                site_name, option_name, lat, lon, length, azims,
+                layer_mode, sector_width, extra_data=None, use_bands=use_bands
             )
             self.map_viewer_dialog.render_sites_on_map([site_feature])
 
@@ -1867,7 +2646,7 @@ class SiteLayerCreator(QMainWindow):
 
         layer_mode = self.get_multi_site_layer_mode()
         default_length = float(self.input_multi_length.text().strip()) if self.input_multi_length.text().strip() else 120.0
-        sector_width = float(self.input_multi_width.text().strip()) if self.input_multi_width.text().strip() else 60.0
+        default_width = float(self.input_multi_width.text().strip()) if self.input_multi_width.text().strip() else 60.0
 
         def clean_cell(value):
             if value is None:
@@ -1877,56 +2656,94 @@ class SiteLayerCreator(QMainWindow):
                 return ""
             return val
 
-        dict_rows = []
+        def norm_key(k):
+            return str(k).strip().lower().replace(" ", "").replace("_", "")
+
+        raw_rows = []
         if file_path.lower().endswith(".xlsx"):
-            raw_rows = read_simple_xlsx(file_path)
-            if not raw_rows:
-                raise ValueError("The Excel file is empty.")
-            headers = [str(h).strip().lower().replace(" ", "") for h in raw_rows[0]]
-            for r in raw_rows[1:]:
-                row_dict = {headers[i]: (r[i] if i < len(r) else "") for i in range(len(headers))}
-                dict_rows.append(row_dict)
-            fieldnames = headers
+            xlsx_rows = read_simple_xlsx(file_path)
+            if not xlsx_rows:
+                raise ValueError("Excel file is empty.")
+            raw_headers = [str(h).strip() for h in xlsx_rows[0]]
+            for r in xlsx_rows[1:]:
+                row_dict = {}
+                for i, h in enumerate(raw_headers):
+                    if h:
+                        row_dict[h] = r[i] if i < len(r) else ""
+                raw_rows.append(row_dict)
         else:
             with open(file_path, 'r', encoding='utf-8-sig') as f:
                 reader = csv.DictReader(f)
-                fieldnames = [name.strip().lower().replace(" ", "") for name in (reader.fieldnames or [])]
-                reader.fieldnames = fieldnames
-                for r in reader:
-                    dict_rows.append(r)
+                if not reader.fieldnames:
+                    raise ValueError("CSV file has no headers.")
+                for row in reader:
+                    raw_rows.append(row)
 
-        required_cols = ['sitename', 'option', 'lat', 'long', 'az-a', 'az-b', 'az-c', 'az-d', 'linelength']
-        for col in required_cols:
-            if col not in fieldnames:
-                if col == 'sitename' and 'sitename/option' in fieldnames:
-                    continue
-                raise ValueError(
-                    f"Missing column: '{col}'.\n"
-                    f"Expected: site name, option, lat, long, az-a, az-b, az-c, az-d, line length"
-                )
+        if not raw_rows:
+            raise ValueError("No data rows found in the selected file.")
+
+        sample_keys = list(raw_rows[0].keys())
+        norm_to_orig = {norm_key(k): k for k in sample_keys}
+
+        has_site = any(k in norm_to_orig for k in ('sitename', 'site', 'sitename/option', 'name'))
+        has_lat = any(k in norm_to_orig for k in ('lat', 'latitude'))
+        has_lon = any(k in norm_to_orig for k in ('long', 'lon', 'longitude'))
+
+        if not (has_site and has_lat and has_lon):
+            raise ValueError("Missing mandatory columns! Template must include at least: 'site name', 'lat', 'long'.")
+
+        standard_norm_keys = {
+            'sitename', 'site', 'sitename/option', 'name',
+            'option', 'opt',
+            'lat', 'latitude',
+            'long', 'lon', 'longitude',
+            'aza', 'az-a', 's1', 'sector1',
+            'azb', 'az-b', 's2', 'sector2',
+            'azc', 'az-c', 's3', 'sector3',
+            'azd', 'az-d', 's4', 'sector4',
+            'linelength', 'length', 'sectorlength',
+            'sectorwidth', 'width', 'beamwidth'
+        }
+
+        def get_val(row_obj, possible_norm_keys, default_val=""):
+            for pk in possible_norm_keys:
+                if pk in norm_to_orig:
+                    return clean_cell(row_obj.get(norm_to_orig[pk], ""))
+            return default_val
 
         parsed_sites = []
-        for row in dict_rows:
-            site_name = clean_cell(row.get('sitename', row.get('sitename/option', 'Unnamed')))
-            option = clean_cell(row.get('option', ''))
-
-            lat_str = clean_cell(row.get('lat', ''))
-            lon_str = clean_cell(row.get('long', ''))
-            length_str = clean_cell(row.get('linelength', ''))
+        for row in raw_rows:
+            site_name = get_val(row, ['sitename', 'site', 'sitename/option', 'name'], 'Unnamed')
+            option = get_val(row, ['option', 'opt'], '')
+            lat_str = get_val(row, ['lat', 'latitude'], '')
+            lon_str = get_val(row, ['long', 'lon', 'longitude'], '')
 
             if not lat_str or not lon_str:
                 continue
 
             lat = float(lat_str)
             lon = float(lon_str)
+
+            length_str = get_val(row, ['linelength', 'length', 'sectorlength'], '')
             length = float(length_str) if length_str else default_length
 
+            width_str = get_val(row, ['sectorwidth', 'width', 'beamwidth'], '')
+            sector_width = float(width_str) if width_str else default_width
+
             azims = [
-                clean_cell(row.get('az-a')), 
-                clean_cell(row.get('az-b')), 
-                clean_cell(row.get('az-c')), 
-                clean_cell(row.get('az-d'))
+                get_val(row, ['aza', 'az-a', 's1', 'sector1'], ''),
+                get_val(row, ['azb', 'az-b', 's2', 'sector2'], ''),
+                get_val(row, ['azc', 'az-c', 's3', 'sector3'], ''),
+                get_val(row, ['azd', 'az-d', 's4', 'sector4'], '')
             ]
+
+            extra_data = {}
+            for orig_col in sample_keys:
+                nk = norm_key(orig_col)
+                if nk not in standard_norm_keys:
+                    val = clean_cell(row.get(orig_col, ""))
+                    if val:
+                        extra_data[orig_col] = val
 
             parsed_sites.append({
                 "site_name": site_name,
@@ -1936,40 +2753,47 @@ class SiteLayerCreator(QMainWindow):
                 "length": length,
                 "sector_width": sector_width,
                 "layer_mode": layer_mode,
-                "azims": azims
+                "azims": azims,
+                "extra_data": extra_data
             })
 
         if not parsed_sites:
-            raise ValueError("No valid data rows found in the template file.")
+            raise ValueError("No valid rows with Lat/Long found in the template file.")
 
         return parsed_sites
 
     def create_multi_sites_kml(self, open_file=False):
         try:
             parsed_sites = self.parse_multi_sites_file()
-            if parsed_sites is None:
+            if not parsed_sites:
                 return
 
+            use_bands = self.chk_multi_use_bands.isChecked()
             kml = simplekml.Kml()
             for s in parsed_sites:
                 coord_text = f"{s['lat']}, {s['lon']}"
-                sectors_data = [{"azimuth": az} for az in s['azims']]
+                sectors_data = [{"azimuth": az} for az in s["azims"]]
                 self.add_site_to_history(
-                    s['site_name'], s['option'], coord_text, s['length'],
-                    s['sector_width'], s['layer_mode'], sectors_data
+                    s["site_name"], s["option"], coord_text,
+                    s["length"], s["sector_width"], s["layer_mode"],
+                    sectors_data, s["extra_data"]
                 )
 
                 fol_name = f"{s['site_name']} {s['option']}".strip()
                 fol = kml.newfolder(name=fol_name)
                 self.generate_site_kml(
-                    fol, s['site_name'], s['option'], s['lat'], s['lon'], 0.0,
-                    s['length'], s['azims'], s['layer_mode'], s['sector_width']
+                    fol, s["site_name"], s["option"], s["lat"], s["lon"], 0.0,
+                    s["length"], s["azims"], s["layer_mode"], s["sector_width"],
+                    s["extra_data"], use_bands=use_bands
                 )
 
             self.save_history()
             self.populate_history_list()
 
             out_name = self.input_multi_outname.text().strip() or "imported_multi_sites.kml"
+            if not out_name.lower().endswith(".kml"):
+                out_name += ".kml"
+
             output_filename = self.get_output_filepath(out_name)
             kml.save(output_filename)
 
@@ -1977,35 +2801,40 @@ class SiteLayerCreator(QMainWindow):
                 self.open_kml_file(output_filename)
 
             QMessageBox.information(
-                self, "Success", 
-                f"Imported {len(parsed_sites)} sites to history & created:\n'{output_filename}'!"
+                self, "Success",
+                f"Imported {len(parsed_sites)} sites to history & created:\n'{output_filename}'"
             )
 
         except Exception as e:
-            QMessageBox.critical(self, "Import Error", str(e))
+            QMessageBox.critical(self, "Multi-Site Import Error", str(e))
 
     def view_multi_sites_in_map(self):
         try:
             parsed_sites = self.parse_multi_sites_file()
-            if parsed_sites is None:
+            if not parsed_sites:
                 return
 
+            use_bands = self.chk_multi_use_bands.isChecked()
             map_features = []
             for s in parsed_sites:
                 coord_text = f"{s['lat']}, {s['lon']}"
-                sectors_data = [{"azimuth": az} for az in s['azims']]
+                sectors_data = [{"azimuth": az} for az in s["azims"]]
                 self.add_site_to_history(
-                    s['site_name'], s['option'], coord_text, s['length'],
-                    s['sector_width'], s['layer_mode'], sectors_data
+                    s["site_name"], s["option"], coord_text,
+                    s["length"], s["sector_width"], s["layer_mode"],
+                    sectors_data, s["extra_data"]
                 )
+
                 feat = self.build_site_map_feature(
-                    s['site_name'], s['option'], s['lat'], s['lon'],
-                    s['length'], s['azims'], s['layer_mode'], s['sector_width']
+                    s["site_name"], s["option"], s["lat"], s["lon"],
+                    s["length"], s["azims"], s["layer_mode"], s["sector_width"],
+                    s["extra_data"], use_bands=use_bands
                 )
                 map_features.append(feat)
 
             self.save_history()
             self.populate_history_list()
+
             self.map_viewer_dialog.render_sites_on_map(map_features)
 
         except Exception as e:
